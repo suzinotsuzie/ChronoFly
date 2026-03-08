@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en" style="background: transparent;">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suzi Flies — Monet Icons</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Jost:wght@300;400&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: transparent !important;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    font-family: 'Jost', sans-serif;
+  }
+
+  .icons-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 36px 28px;
+    max-width: 720px;
+    width: 100%;
+    background: transparent;
+  }
+
+  .icon-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    background: transparent;
+  }
+
+  .icon-wrap {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+  }
+
+  .icon-label {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-weight: 300;
+    color: #1E4D3A;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  .icon-step {
+    font-size: 9px;
+    color: #7A9268;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 1px;
+  }
+</style>
+</head>
+<body>
+
+<div class="icons-grid">
+
+  <!-- ① Ring Ring -->
+  <div class="icon-card">
+    <div class="icon-wrap">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="bell1" cx="36%" cy="28%" r="68%">
+            <stop offset="0%"   stop-color="#E4D5B7"/>
+            <stop offset="50%"  stop-color="#CEBF9E"/>
+            <stop offset="100%" stop-color="#A89070"/>
+          </radialGradient>
+        </defs>
+        <path d="M36 12 C24 12 18 22 18 32 L18 46 Q18 50 22 50 L50 50 Q54 50 54 46 L54 32 C54 22 48 12 36 12Z" fill="url(#bell1)"/>
+        <path d="M36 14 C26 14 21 23 21 32 L21 42" stroke="#E4D5B7" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.38"/>
+        <circle cx="36" cy="54" r="4.5" fill="#C08070"/>
+        <circle cx="36" cy="54" r="2.2" fill="#9A6050"/>
+        <path d="M30 12 Q36 6 42 12" stroke="#A89070" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8"/>
+        <circle cx="36" cy="10" r="2.8" fill="#CEBF9E" opacity="0.75"/>
+        <path d="M10 28 Q6 36 10 44"  stroke="#C08070" stroke-width="2.8" stroke-linecap="round" fill="none" opacity="0.75"/>
+        <path d="M6 22  Q1 36 6 50"   stroke="#C08070" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.35"/>
+        <path d="M62 28 Q66 36 62 44" stroke="#C08070" stroke-width="2.8" stroke-linecap="round" fill="none" opacity="0.75"/>
+        <path d="M66 22 Q71 36 66 50" stroke="#C08070" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.35"/>
+        <ellipse cx="18" cy="62" rx="8"   ry="3.2" fill="#7A9268" opacity="0.5" transform="rotate(-8 18 62)"/>
+        <ellipse cx="54" cy="63" rx="6.5" ry="2.8" fill="#1E4D3A" opacity="0.55" transform="rotate(6 54 63)"/>
+      </svg>
+    </div>
+    <div><div class="icon-label">Ring Ring</div><div class="icon-step">01</div></div>
+  </div>
+
+  <!-- ② Wakey Wakey — sleepy half-open eye -->
+  <div class="icon-card">
+    <div class="icon-wrap">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="iris2" cx="40%" cy="38%" r="58%">
+            <stop offset="0%"   stop-color="#7A9268"/>
+            <stop offset="55%"  stop-color="#1E4D3A"/>
+            <stop offset="100%" stop-color="#0D2B2B"/>
+          </radialGradient>
+          <clipPath id="eyeclip2">
+            <path d="M10 36 Q36 16 62 36 Q36 52 10 36Z"/>
+          </clipPath>
+        </defs>
+        <!-- eye white -->
+        <path d="M10 36 Q36 16 62 36 Q36 56 10 36Z" fill="#E4D5B7" opacity="0.92"/>
+        <!-- drooping upper eyelid -->
+        <path d="M10 36 Q36 16 62 36 Q50 28 36 26 Q22 28 10 36Z" fill="#C4B08A" opacity="0.88"/>
+        <!-- iris -->
+        <circle cx="36" cy="37" r="10" fill="url(#iris2)" clip-path="url(#eyeclip2)"/>
+        <!-- pupil -->
+        <circle cx="36" cy="37" r="5" fill="#0D2B2B" opacity="0.9" clip-path="url(#eyeclip2)"/>
+        <!-- highlight -->
+        <circle cx="32" cy="34" r="2.5" fill="#E4D5B7" opacity="0.4" clip-path="url(#eyeclip2)"/>
+        <!-- upper lid edge -->
+        <path d="M10 36 Q36 16 62 36" stroke="#C08070" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+        <!-- lower lid edge -->
+        <path d="M10 36 Q36 52 62 36" stroke="#C08070" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.55"/>
+        <!-- lashes -->
+        <line x1="22" y1="24" x2="20" y2="17" stroke="#C08070" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+        <line x1="30" y1="19" x2="29" y2="12" stroke="#C08070" stroke-width="2" stroke-linecap="round" opacity="0.65"/>
+        <line x1="36" y1="17" x2="36" y2="10" stroke="#C08070" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+        <line x1="43" y1="19" x2="44" y2="12" stroke="#C08070" stroke-width="2" stroke-linecap="round" opacity="0.65"/>
+        <line x1="50" y1="24" x2="52" y2="17" stroke="#C08070" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+        <!-- z z z -->
+        <text x="52" y="22" font-family="Cormorant Garamond, serif" font-style="italic" font-size="11" fill="#7A9268" opacity="0.7">z</text>
+        <text x="58" y="15" font-family="Cormorant Garamond, serif" font-style="italic" font-size="9"  fill="#7A9268" opacity="0.5">z</text>
+        <text x="63" y="9"  font-family="Cormorant Garamond, serif" font-style="italic" font-size="7"  fill="#7A9268" opacity="0.35">z</text>
+        <!-- lily pads -->
+        <ellipse cx="18" cy="60" rx="7"   ry="2.8" fill="#7A9268" opacity="0.45" transform="rotate(-6 18 60)"/>
+        <ellipse cx="54" cy="61" rx="6"   ry="2.4" fill="#1E4D3A" opacity="0.5"  transform="rotate(5 54 61)"/>
+      </svg>
+    </div>
+    <div><div class="icon-label">Wakey Wakey</div><div class="icon-step">02</div></div>
+  </div>
+
+  <!-- ③ Leaving Home -->
+  <div class="icon-card">
+    <div class="icon-wrap">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="wall3" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#E4D5B7" stop-opacity="0.92"/>
+            <stop offset="100%" stop-color="#C4B08A" stop-opacity="0.68"/>
+          </linearGradient>
+          <linearGradient id="roof3" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#C08070"/>
+            <stop offset="100%" stop-color="#9A6050"/>
+          </linearGradient>
+        </defs>
+        <rect x="10" y="36" width="36" height="26" rx="2" fill="url(#wall3)"/>
+        <path d="M6 38 L28 14 L50 38Z" fill="url(#roof3)"/>
+        <path d="M8 38 L28 16 L48 38" stroke="#E4D5B7" stroke-width="1" fill="none" opacity="0.32"/>
+        <path d="M21 62 L21 46 Q21 40 28 40 Q35 40 35 46 L35 62Z" fill="#1E4D3A" opacity="0.82"/>
+        <circle cx="33" cy="52" r="2" fill="#C08070" opacity="0.85"/>
+        <rect x="12" y="42" width="8" height="8" rx="1.5" fill="#1E4D3A" opacity="0.5"/>
+        <line x1="16" y1="42" x2="16" y2="50" stroke="#7A9268" stroke-width="1.2" opacity="0.6"/>
+        <line x1="12" y1="46" x2="20" y2="46" stroke="#7A9268" stroke-width="1.2" opacity="0.6"/>
+        <rect x="38" y="20" width="5" height="12" rx="1" fill="#C08070" opacity="0.65"/>
+        <path d="M52 44 L64 36" stroke="#C08070" stroke-width="3.8" stroke-linecap="round"/>
+        <path d="M58 30 L64 36 L58 42" stroke="#C08070" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <circle cx="55" cy="30" r="2.2" fill="#E4D5B7" opacity="0.55"/>
+        <circle cx="61" cy="27" r="1.6" fill="#C08070" opacity="0.45"/>
+        <ellipse cx="8"  cy="64" rx="6"   ry="2.5" fill="#7A9268" opacity="0.5"/>
+        <ellipse cx="48" cy="65" rx="5.5" ry="2.2" fill="#1E4D3A" opacity="0.5"/>
+      </svg>
+    </div>
+    <div><div class="icon-label">Leaving Home</div><div class="icon-step">03</div></div>
+  </div>
+
+  <!-- ④ Terminal Entry -->
+  <div class="icon-card">
+    <div class="icon-wrap">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="facade4" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#E4D5B7" stop-opacity="0.85"/>
+            <stop offset="100%" stop-color="#7A9268" stop-opacity="0.5"/>
+          </linearGradient>
+          <linearGradient id="archfill4" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#7A9268" stop-opacity="0.8"/>
+            <stop offset="100%" stop-color="#1E4D3A" stop-opacity="0.95"/>
+          </linearGradient>
+        </defs>
+        <rect x="4" y="38" width="64" height="26" rx="3" fill="url(#facade4)"/>
+        <path d="M22 64 L22 46 Q22 34 36 34 Q50 34 50 46 L50 64Z" fill="url(#archfill4)"/>
+        <path d="M22 46 Q22 34 36 34 Q50 34 50 46" stroke="#E4D5B7" stroke-width="2" fill="none" opacity="0.5"/>
+        <rect x="8"  y="44" width="11" height="11" rx="2" fill="#1E4D3A" opacity="0.65"/>
+        <rect x="53" y="44" width="11" height="11" rx="2" fill="#1E4D3A" opacity="0.65"/>
+        <path d="M2 38 Q36 24 70 38" stroke="#E4D5B7" stroke-width="2.2" fill="none" opacity="0.42"/>
+        <rect x="30" y="14" width="12" height="24" rx="2" fill="#E4D5B7" opacity="0.6"/>
+        <rect x="27" y="11" width="18" height="7"  rx="2" fill="#C08070" opacity="0.78"/>
+        <path d="M44 9 L58 6 L56 9 L58 12 L44 9Z" fill="#C08070" opacity="0.78"/>
+        <path d="M44 9 L32 8 L33 9 L32 10 L44 9Z" fill="#C08070" opacity="0.62"/>
+        <ellipse cx="10" cy="65" rx="6"   ry="2.2" fill="#7A9268" opacity="0.45"/>
+        <ellipse cx="62" cy="65" rx="5.5" ry="2"   fill="#1E4D3A" opacity="0.45"/>
+      </svg>
+    </div>
+    <div><div class="icon-label">Terminal Entry</div><div class="icon-step">04</div></div>
+  </div>
+
+  <!-- ⑤ Past Security -->
+  <div class="icon-card">
+    <div class="icon-wrap">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="shield5" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#7A9268"/>
+            <stop offset="100%" stop-color="#1E4D3A"/>
+          </linearGradient>
+        </defs>
+        <path d="M36 8 C36 8 12 15 12 28 L12 42 C12 56 22 64 36 68 C50 64 60 56 60 42 L60 28 C60 15 36 8 36 8Z" fill="url(#shield5)" opacity="0.88"/>
+        <path d="M36 11 C36 11 15 17.5 15 28 L15 33" stroke="#E4D5B7" stroke-width="1.5" stroke-linecap="round" opacity="0.3" fill="none"/>
+        <path d="M36 8 C36 8 12 15 12 28 L12 42 C12 56 22 64 36 68 C50 64 60 56 60 42 L60 28 C60 15 36 8 36 8Z" stroke="#7A9268" stroke-width="1.2" fill="none" opacity="0.55"/>
+        <path d="M20 38 L31 51 L52 24" stroke="#E4D5B7" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M20 38 L31 51 L52 24" stroke="#E4D5B7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.42"/>
+        <circle cx="10" cy="22" r="2.2" fill="#C08070" opacity="0.42"/>
+        <circle cx="62" cy="24" r="1.8" fill="#7A9268" opacity="0.42"/>
+        <ellipse cx="22" cy="70" rx="7" ry="2.5" fill="#7A9268" opacity="0.45"/>
+        <ellipse cx="50" cy="71" rx="6" ry="2.2" fill="#1E4D3A" opacity="0.45"/>
+      </svg>
+    </div>
+    <div><div class="icon-label">Past Security</div><div class="icon-step">05</div></div>
+  </div>
+
+  <!-- ⑥ At the Gate -->
+  <div class="icon-card">
+    <div class="icon-wrap">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="pillar6" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stop-color="#E4D5B7" stop-opacity="0.92"/>
+            <stop offset="100%" stop-color="#C08070" stop-opacity="0.6"/>
+          </linearGradient>
+        </defs>
+        <rect x="6"  y="28" width="14" height="36" rx="7" fill="url(#pillar6)"/>
+        <rect x="52" y="28" width="14" height="36" rx="7" fill="url(#pillar6)"/>
+        <path d="M6 34 Q36 4 66 34"  stroke="url(#pillar6)" stroke-width="12" fill="none" stroke-linecap="round"/>
+        <rect x="26" y="12" width="20" height="12" rx="3" fill="#1E4D3A" opacity="0.88"/>
+        <text x="36" y="22" text-anchor="middle" font-family="Cormorant Garamond, serif" font-size="10" fill="#E4D5B7" opacity="0.92" font-style="italic">G</text>
+        <circle cx="36" cy="44" r="5.5" fill="#E4D5B7" opacity="0.82"/>
+        <path d="M31 50 Q36 62 41 50" stroke="#E4D5B7" stroke-width="3.5" stroke-linecap="round" fill="none" opacity="0.75"/>
+        <path d="M33 56 L30 64" stroke="#E4D5B7" stroke-width="3" stroke-linecap="round" opacity="0.58"/>
+        <path d="M39 56 L42 64" stroke="#E4D5B7" stroke-width="3" stroke-linecap="round" opacity="0.58"/>
+        <rect x="44" y="52" width="8" height="10" rx="2" fill="#C08070" opacity="0.78"/>
+        <line x1="48" y1="50" x2="48" y2="52" stroke="#C08070" stroke-width="2.2" stroke-linecap="round" opacity="0.75"/>
+        <ellipse cx="8"  cy="66" rx="6"   ry="2.5" fill="#7A9268" opacity="0.45" transform="rotate(-8 8 66)"/>
+        <ellipse cx="64" cy="66" rx="5.5" ry="2.2" fill="#1E4D3A" opacity="0.45"/>
+      </svg>
+    </div>
+    <div><div class="icon-label">At the Gate</div><div class="icon-step">06</div></div>
+  </div>
+
+  <!-- ⑦ Get On Board -->
+  <div class="icon-card">
+    <div class="icon-wrap">
+      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="plane7" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%"   stop-color="#E4D5B7"/>
+            <stop offset="100%" stop-color="#C8D8CC"/>
+          </linearGradient>
+        </defs>
+        <path d="M4 60 Q18 48 34 38" stroke="#7A9268" stroke-width="3"   fill="none" stroke-linecap="round" stroke-dasharray="2 6" opacity="0.65"/>
+        <path d="M4 66 Q20 54 34 43" stroke="#1E4D3A" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-dasharray="1.5 6" opacity="0.42"/>
+        <path d="M34 38 C42 28 64 22 68 29 C72 36 56 48 34 44 Z" fill="url(#plane7)"/>
+        <path d="M66 29 L74 29 L66 33 Z" fill="#E4D5B7" opacity="0.88"/>
+        <path d="M46 42 L36 64 L54 48 Z" fill="#E4D5B7" opacity="0.72"/>
+        <path d="M34 38 L26 22 L38 34 Z" fill="#C08070" opacity="0.88"/>
+        <path d="M34 43 L26 56 L38 47 Z" fill="#E4D5B7" opacity="0.55"/>
+        <circle cx="58" cy="30" r="2.8" fill="#1E4D3A" opacity="0.78"/>
+        <circle cx="51" cy="33" r="2.8" fill="#1E4D3A" opacity="0.78"/>
+        <circle cx="44" cy="35" r="2.8" fill="#1E4D3A" opacity="0.78"/>
+        <path d="M2 64 Q14 60 24 64 Q34 68 44 64 Q54 60 70 64" stroke="#1E4D3A" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.45"/>
+        <ellipse cx="10" cy="67" rx="9"   ry="3.2" fill="#7A9268" opacity="0.5"/>
+        <ellipse cx="36" cy="70" rx="7"   ry="2.8" fill="#1E4D3A" opacity="0.45"/>
+        <ellipse cx="58" cy="68" rx="5.5" ry="2.2" fill="#7A9268" opacity="0.4"/>
+      </svg>
+    </div>
+    <div><div class="icon-label">Get On Board</div><div class="icon-step">07</div></div>
+  </div>
+
+</div>
+
+</body>
+</html>

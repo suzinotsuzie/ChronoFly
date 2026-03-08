@@ -1,0 +1,4 @@
+# Env (do not commit API keys)
+.env
+.env.local
+node_modules
