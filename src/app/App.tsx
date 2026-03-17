@@ -92,11 +92,17 @@ function triggerHaptic(): void {
 }
 
 /** GO 按钮：风声 + 低频震动感（触觉 + 听觉 + 视觉轻抖） */
-function playGoSound(): void {
+async function playGoSound(): Promise<void> {
   const ctx = getAudioCtx();
   if (!ctx) return;
-  if (ctx.state === 'suspended') void ctx.resume();
-  const t = ctx.currentTime;
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume();
+    } catch {
+      return;
+    }
+  }
+  const t = ctx.currentTime + 0.01;
 
   triggerHaptic();
 
@@ -136,11 +142,17 @@ function playGoSound(): void {
   windSource.stop(t + windDur);
 }
 /** now 按钮：短促双音「哒—哒」— 两下轻触 */
-function playNowSound(): void {
+async function playNowSound(): Promise<void> {
   const ctx = getAudioCtx();
   if (!ctx) return;
-  if (ctx.state === 'suspended') void ctx.resume();
-  const t = ctx.currentTime;
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume();
+    } catch {
+      return;
+    }
+  }
+  const t = ctx.currentTime + 0.01;
   const tap = (start: number, freq: number) => {
     const o = ctx.createOscillator();
     const g = ctx.createGain();
@@ -168,6 +180,9 @@ const MOCK_FLIGHTS: Record<string, string> = {
   ZH9876: '09:45', ZH1234: '16:25',
   AA100:  '08:00', UA200:  '12:30', DL300:  '07:20',
 };
+
+// ── Local storage keys ────────────────────────────────────────────────────
+const FLIGHT_STATE_KEY = 'chrono_flight_state_v1';
 
 function mockDeparture(flightNo: string): string {
   const key = flightNo.toUpperCase().trim();
@@ -433,6 +448,55 @@ export default function App() {
   const dateColumnRef = useRef<HTMLDivElement>(null);
   const avatarBlockRef = useRef<HTMLDivElement>(null);
   const [datePickerRect, setDatePickerRect] = useState<{ top: number; left: number; width: number; columnRight?: number; blockLeft?: number } | null>(null);
+
+  // ── Restore last flight state for today ──────────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(FLIGHT_STATE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as {
+        flightNo?: string;
+        submitted?: string;
+        flightDate?: string;
+        stamps?: Record<string, string>;
+      };
+      if (!data.submitted || !data.flightDate) return;
+      // 仅在航班当天恢复
+      const now = new Date();
+      const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      if (data.flightDate !== todayYmd) return;
+      // 如果最后一个节点已打卡，则视为完成，不再恢复
+      const done = data.stamps && data.stamps['board'];
+      if (done) return;
+
+      setFlightDate(data.flightDate);
+      setFlightNo(data.flightNo || data.submitted);
+      setSubmitted(data.submitted);
+      setStamps(data.stamps ?? {});
+      setRevealed(true);
+      setFlightDepStr(mockDeparture(data.submitted));
+    } catch {
+      // ignore parse errors
+    }
+  }, []);
+
+  // ── Persist current flight state ─────────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!submitted) return;
+    try {
+      const payload = {
+        flightNo,
+        submitted,
+        flightDate,
+        stamps,
+      };
+      localStorage.setItem(FLIGHT_STATE_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore quota errors
+    }
+  }, [flightNo, submitted, flightDate, stamps]);
   useEffect(() => {
     if (!datePickerOpen) return;
     const close = (e: MouseEvent) => {
@@ -574,14 +638,26 @@ export default function App() {
     <div
       className="chrono-bg"
       style={{
-        width: '100vw', height: '100vh',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '100vw',
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'stretch',
+        justifyContent: 'center',
         background: '#060F0F',
+        paddingTop: 'max(8px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(8px, env(safe-area-inset-bottom, 0px))',
+        boxSizing: 'border-box',
+        touchAction: 'none',
+        overscrollBehavior: 'none',
       }}
     >
       {/* ── Phone frame ── */}
       <div style={{
-        width: 375, height: 812,
+        width: '100%',
+        maxWidth: 420,
+        height: '100%',
+        maxHeight: 900,
+        marginInline: 8,
         position: 'relative', overflow: 'hidden',
         borderRadius: 44,
         boxShadow: '0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.07), inset 0 0 0 1px rgba(255,255,255,0.04)',
@@ -621,16 +697,13 @@ export default function App() {
         }}>
 
           {/* ── Header ── */}
-          <div style={{ textAlign:'center', flexShrink:0 }}>
+          <div style={{ textAlign:'center', flexShrink:0, marginBottom:10 }}>
             <div style={{
               fontFamily:'"Cormorant Garamond", Georgia, serif',
               fontStyle:'italic', fontWeight:300,
-              fontSize:30, color:C.beige,
-              letterSpacing:'0.08em', lineHeight:1,
+              fontSize:26, color:C.beige,
+              letterSpacing:'0.08em', lineHeight:1.05,
             }}>{userName}, Décollage</div>
-            <div style={{ fontSize:8, color:C.moss, letterSpacing:'0.22em', textTransform:'uppercase', marginTop:2, fontWeight:300 }}>
-              morning ritual planner
-            </div>
           </div>
 
           {/* ── Flight input ── */}
@@ -874,26 +947,25 @@ export default function App() {
                   transition={{ duration:0.55, ease:[0.22,1,0.36,1] }}
                   style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}
                 >
-                  {/* top label */}
+                  {/* label: set alarm text */}
                   <div style={{
-                    fontSize:8, color:C.moss,
-                    letterSpacing:'0.22em', textTransform:'uppercase',
-                  }}>wake alarm</div>
+                    fontSize:10,
+                    color:C.moss,
+                    letterSpacing:'0.16em',
+                    textTransform:'uppercase',
+                    marginBottom:0,
+                  }}>
+                    set your alarm to this time
+                  </div>
 
                   {/* big time */}
                   <div style={{
                     fontFamily:'"Cormorant Garamond", Georgia, serif',
                     fontSize:56, color:C.beige, lineHeight:1,
                     letterSpacing:'-0.01em',
+                    marginTop:0,
+                    marginBottom:8,
                   }}>{alarmStr}</div>
-
-                  {/* subtitle */}
-                  <div style={{
-                    fontSize:10, color:'rgba(228,213,183,0.5)',
-                    letterSpacing:'0.06em',
-                  }}>
-                    set your alarm to this time
-                  </div>
 
                   {/* flight badge */}
                   <div style={{
@@ -969,8 +1041,43 @@ export default function App() {
             padding:'8px 10px 6px',
             display:'flex', flexDirection:'column',
           }}>
-            <div style={{ fontSize:7.5, color:C.moss, letterSpacing:'0.22em', textTransform:'uppercase', marginBottom:5, paddingLeft:2 }}>
-              The Journey
+            <div style={{
+              display:'flex',
+              alignItems:'center',
+              justifyContent:'space-between',
+              marginBottom:6,
+              paddingInline:2,
+            }}>
+              <div style={{
+                fontSize:11,
+                color:C.moss,
+                letterSpacing:'0.22em',
+                textTransform:'uppercase',
+              }}>
+                The Journey
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                style={{
+                  display:'inline-flex',
+                  alignItems:'center',
+                  gap:4,
+                  padding:'4px 10px',
+                  borderRadius:999,
+                  border:'1px solid rgba(228,213,183,0.09)',
+                  background:'rgba(10,20,20,0.35)',
+                  color:'rgba(228,213,183,0.82)',
+                  fontSize:9,
+                  letterSpacing:'0.16em',
+                  textTransform:'uppercase',
+                  fontFamily: "'Jost', sans-serif",
+                  cursor:'pointer',
+                }}
+              >
+                <Settings size={11} strokeWidth={1.5}/>
+                MY RITUAL
+              </button>
             </div>
 
             <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
@@ -1015,11 +1122,11 @@ export default function App() {
                         </div>
 
                         {/* Stamp row */}
-                        <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:2 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:3 }}>
                           {stamped ? (
                             <>
                               <span style={{
-                                fontSize:10, color: C.moss,
+                                fontSize:12, color: C.moss,
                                 fontFamily:'"Cormorant Garamond", serif',
                                 letterSpacing:'0.04em',
                               }}>
@@ -1027,14 +1134,15 @@ export default function App() {
                               </span>
                               {diff && (
                                 <span style={{
-                                  fontSize:8, color: diff.color,
-                                  letterSpacing:'0.06em',
+                                  fontSize:10,
+                                  color: '#0B1515',
+                                  letterSpacing:'0.08em',
                                   background: diff.color === C.moss
-                                    ? 'rgba(122,146,104,0.12)'
+                                    ? 'rgba(122,146,104,0.28)'
                                     : diff.color === C.rosy
-                                      ? 'rgba(192,128,112,0.12)'
-                                      : 'rgba(30,77,58,0.2)',
-                                  borderRadius:20, padding:'1px 5px',
+                                      ? 'rgba(192,128,112,0.32)'
+                                      : 'rgba(30,77,58,0.4)',
+                                  borderRadius:20, padding:'1px 6px',
                                 }}>
                                   {diff.label}
                                 </span>
@@ -1154,25 +1262,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Settings button */}
-          <button
-            onClick={() => setSettingsOpen(true)}
-            style={{
-              flexShrink:0,
-              display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-              background:'rgba(228,213,183,0.05)',
-              border:'1px solid rgba(228,213,183,0.09)',
-              borderRadius:13, padding:'7px 0',
-              color:'rgba(122,146,104,0.7)', fontSize:9,
-              letterSpacing:'0.16em', cursor:'pointer',
-              textTransform:'uppercase',
-              fontFamily:"'Jost', sans-serif", fontWeight:300,
-            }}
-          >
-            <Settings size={11} strokeWidth={1.5}/>
-            MY RITUAL
-            <ChevronDown size={11} strokeWidth={1.5}/>
-          </button>
+          {/* Settings button 已移至 The Journey 标题行右侧，这里留空以腾出更大可视区域 */}
         </div>
 
         {/* ── Settings Drawer ── */}
@@ -1217,7 +1307,7 @@ export default function App() {
                       fontStyle:'italic', fontWeight:300,
                       fontSize:22, color:C.beige, lineHeight:1.1,
                     }}>MY RITUAL</div>
-                    <div style={{ fontSize:9, color:C.moss, letterSpacing:'0.1em', marginTop:2 }}>your defaults, your pace.</div>
+                    <div style={{ fontSize:10, color:C.moss, letterSpacing:'0.12em', marginTop:3 }}>your defaults, your pace.</div>
                   </div>
                   <button
                     onClick={() => setSettingsOpen(false)}
@@ -1261,7 +1351,7 @@ export default function App() {
                         fontSize:12, color:'rgba(228,213,183,0.85)', lineHeight:1.2,
                         fontFamily:'"Cormorant Garamond", serif', fontStyle:'italic',
                       }}>{item.label}</div>
-                      <div style={{ fontSize:8, color:'rgba(122,146,104,0.65)', letterSpacing:'0.05em' }}>{item.sub}</div>
+                      <div style={{ fontSize:9, color:'rgba(122,146,104,0.75)', letterSpacing:'0.07em' }}>{item.sub}</div>
                     </div>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <button

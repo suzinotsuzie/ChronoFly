@@ -173,6 +173,14 @@
 
   body {
     @apply bg-background text-foreground;
+    margin: 0;
+    min-height: 100vh;
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+
+  html, #root {
+    height: 100%;
   }
 
   /**
