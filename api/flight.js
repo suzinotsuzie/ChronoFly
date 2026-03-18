@@ -25,8 +25,10 @@ export default {
       params.set('flight_date', flightDate);
     }
     try {
+      // Free plan of AviationStack does not support HTTPS for some endpoints.
+      // Use HTTP here; the request still goes server-to-server from Vercel.
       const res = await fetch(
-        `https://api.aviationstack.com/v1/flights?${params.toString()}`
+        `http://api.aviationstack.com/v1/flights?${params.toString()}`
       );
       const data = await res.json();
       return Response.json(data);

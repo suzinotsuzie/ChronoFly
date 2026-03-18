@@ -2,45 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Settings, X, ChevronDown, CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
-import { DayPicker, CaptionLabel, useNavigation } from 'react-day-picker';
-import { format, parse } from 'date-fns';
+import { DayPicker, CaptionLabel } from 'react-day-picker';
+import { format, parse, addMonths } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import type { CaptionProps } from 'react-day-picker';
-
-function ChronoCaption(props: CaptionProps) {
-  const { previousMonth, nextMonth } = useNavigation();
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 10 }}>
-      <CaptionLabel {...props} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <button
-          type="button"
-          onClick={() => previousMonth()}
-          style={{
-            background: 'rgba(228,213,183,0.08)', border: '1px solid rgba(228,213,183,0.18)',
-            borderRadius: 6, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: C.beige, cursor: 'pointer',
-          }}
-          aria-label="Previous month"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => nextMonth()}
-          style={{
-            background: 'rgba(228,213,183,0.08)', border: '1px solid rgba(228,213,183,0.18)',
-            borderRadius: 6, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: C.beige, cursor: 'pointer',
-          }}
-          aria-label="Next month"
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function parseFlightDate(ymd: string): Date {
   try {
@@ -448,6 +413,16 @@ export default function App() {
   const dateColumnRef = useRef<HTMLDivElement>(null);
   const avatarBlockRef = useRef<HTMLDivElement>(null);
   const [datePickerRect, setDatePickerRect] = useState<{ top: number; left: number; width: number; columnRight?: number; blockLeft?: number } | null>(null);
+  const [datePickerMonth, setDatePickerMonth] = useState<Date | undefined>(() => parseFlightDate(flightDate));
+
+  const phoneBackground = [
+    'radial-gradient(ellipse 90% 55% at 15% 8%,  rgba(30,77,58,0.65) 0%, transparent 55%)',
+    'radial-gradient(ellipse 70% 45% at 85% 22%, rgba(122,146,104,0.15) 0%, transparent 55%)',
+    'radial-gradient(ellipse 80% 55% at 40% 90%, rgba(13,43,43,0.9) 0%, transparent 60%)',
+    '#1a3a2a',
+  ].join(', ');
+
+  const alarmBackground = 'linear-gradient(135deg, rgba(30,77,58,0.55) 0%, rgba(228,213,183,0.06) 100%)';
 
   // ── Restore last flight state for today ──────────────────────────────────
   useEffect(() => {
@@ -642,8 +617,8 @@ export default function App() {
         height: '100vh',
         display: 'flex',
         alignItems: 'stretch',
-        justifyContent: 'center',
-        background: '#060F0F',
+        justifyContent: 'stretch',
+        background: '#1a3a2a',
         paddingTop: 'max(8px, env(safe-area-inset-top, 0px))',
         paddingBottom: 'max(8px, env(safe-area-inset-bottom, 0px))',
         boxSizing: 'border-box',
@@ -651,24 +626,20 @@ export default function App() {
         overscrollBehavior: 'none',
       }}
     >
-      {/* ── Phone frame ── */}
-      <div style={{
-        width: '100%',
-        maxWidth: 420,
-        height: '100%',
-        maxHeight: 900,
-        marginInline: 8,
-        position: 'relative', overflow: 'hidden',
-        borderRadius: 44,
-        boxShadow: '0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.07), inset 0 0 0 1px rgba(255,255,255,0.04)',
-        background: [
-          'radial-gradient(ellipse 90% 55% at 15% 8%,  rgba(30,77,58,0.65) 0%, transparent 55%)',
-          'radial-gradient(ellipse 70% 45% at 85% 22%, rgba(122,146,104,0.15) 0%, transparent 55%)',
-          'radial-gradient(ellipse 80% 55% at 40% 90%, rgba(13,43,43,0.9) 0%, transparent 60%)',
-          '#0D2B2B',
-        ].join(', '),
-        fontFamily: "'Jost', system-ui, -apple-system, sans-serif",
-      }}>
+      {/* ── App full-screen canvas ── */}
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          position: 'relative',
+          overflow: 'hidden',
+          borderRadius: 0,
+          boxShadow: 'none',
+          marginInline: 0,
+          background: phoneBackground,
+          fontFamily: "'Jost', system-ui, -apple-system, sans-serif",
+        }}
+      >
         {/* 颗粒磨砂层（手机内） */}
         <div className="chrono-phone-grain" aria-hidden />
         {/* 莫奈笔触：手机内柔色块 */}
@@ -801,14 +772,50 @@ export default function App() {
                   >
                     <DayPicker
                       mode="single"
+                      month={datePickerMonth}
                       selected={parseFlightDate(flightDate)}
                       onSelect={(d) => {
                         if (d) setFlightDate(format(d, 'yyyy-MM-dd'));
                         setDatePickerOpen(false);
                       }}
+                      onMonthChange={(m) => setDatePickerMonth(m)}
                       locale={enUS}
-                      captionLayout="buttons"
-                      components={{ Caption: ChronoCaption }}
+                      components={{
+                        Caption: (captionProps: CaptionProps) => {
+                          const displayMonth = datePickerMonth ?? captionProps.displayMonth;
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 10 }}>
+                              <CaptionLabel {...captionProps} displayMonth={displayMonth} />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setDatePickerMonth(addMonths(displayMonth, -1))}
+                                  style={{
+                                    background: 'rgba(228,213,183,0.08)', border: '1px solid rgba(228,213,183,0.18)',
+                                    borderRadius: 6, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: C.beige, cursor: 'pointer',
+                                  }}
+                                  aria-label="Previous month"
+                                >
+                                  <ChevronLeft size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDatePickerMonth(addMonths(displayMonth, 1))}
+                                  style={{
+                                    background: 'rgba(228,213,183,0.08)', border: '1px solid rgba(228,213,183,0.18)',
+                                    borderRadius: 6, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    color: C.beige, cursor: 'pointer',
+                                  }}
+                                  aria-label="Next month"
+                                >
+                                  <ChevronRight size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        },
+                      }}
                       formatters={{
                         formatWeekdayName: (date) => format(date, 'EEE', { locale: enUS }),
                       }}
@@ -871,7 +878,7 @@ export default function App() {
           {/* ── Wake Alarm Hero ── */}
           <motion.div style={{
             flexShrink:0,
-            background:'linear-gradient(135deg, rgba(30,77,58,0.55) 0%, rgba(228,213,183,0.06) 100%)',
+            background: alarmBackground,
             backdropFilter:'blur(16px)',
             border:'1px solid rgba(228,213,183,0.14)',
             borderRadius:20,
