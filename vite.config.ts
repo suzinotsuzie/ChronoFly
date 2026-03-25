@@ -19,6 +19,10 @@ export default defineConfig(({ mode }) => {
     },
     assetsInclude: ['**/*.svg', '**/*.csv'],
     server: {
+      // 监听 0.0.0.0，手机/同网设备可用「电脑 IP:端口」访问（勿用 localhost）
+      host: true,
+      port: 5173,
+      strictPort: false,
       proxy: apiKey
         ? {
             '/api/flight': {

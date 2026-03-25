@@ -1,6 +1,63 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ── ChronoFly: 颗粒磨砂 + 莫奈睡莲笔触背景 ─────────────────────────────────── */
+.theme-green {
+  --c-midnight: #0D2B2B;
+  --c-bg-152A2A: #152A2A;
+  --c-bg-1A3A2A: #1A3A2A;
+  --c-dark: #1E4D3A;
+  --c-moss: #7A9268;
+  --c-rosy: #C08070;
+  --c-roseDeep: #9A6050;
+  --c-roseMid: #C4B08A;
+  --c-roseLight: #CEBF9E;
+  --c-highlight: #D4183D;
+  --c-mint: #C8D8CC;
+
+  --c-beige: #E4D5B7;
+  --c-gold: #D4A860;
+}
+
+.theme-pink {
+  --c-midnight: #2B0D1A;
+  --c-bg-152A2A: #2A1520;
+  --c-bg-1A3A2A: #3A1A22;
+  --c-dark: #4D1E30;
+  --c-moss: #C4B08A;
+  --c-rosy: #D4A860;
+  --c-roseDeep: #9A6050;
+  --c-roseMid: #C4B08A;
+  --c-roseLight: #CEBF9E;
+  --c-highlight: #D4A860;
+  --c-mint: #D8C8CC;
+
+  --c-beige: #E4D5B7;
+  --c-gold: #D4A860;
+}
+
+.chrono-bg,
+body,
+#root {
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+body {
+  /* 默认按 green 配色 */
+  --c-midnight: #0D2B2B;
+  --c-bg-152A2A: #152A2A;
+  --c-bg-1A3A2A: #1A3A2A;
+  --c-dark: #1E4D3A;
+  --c-moss: #7A9268;
+  --c-rosy: #C08070;
+  --c-roseDeep: #9A6050;
+  --c-roseMid: #C4B08A;
+  --c-roseLight: #CEBF9E;
+  --c-highlight: #D4183D;
+  --c-mint: #C8D8CC;
+
+  --c-beige: #E4D5B7;
+  --c-gold: #D4A860;
+}
 .chrono-bg {
   position: relative;
   overflow: hidden;
@@ -26,10 +83,10 @@
   inset: 0;
   z-index: 0;
   background:
-    radial-gradient(ellipse 60% 50% at 20% 15%, rgba(122, 146, 104, 0.12) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 60% at 80% 25%, rgba(192, 128, 112, 0.06) 0%, transparent 45%),
-    radial-gradient(ellipse 70% 55% at 50% 85%, rgba(30, 77, 58, 0.15) 0%, transparent 55%),
-    radial-gradient(ellipse 45% 45% at 65% 60%, rgba(228, 213, 183, 0.04) 0%, transparent 50%);
+    radial-gradient(ellipse 60% 50% at 20% 15%, color-mix(in srgb, var(--c-moss) 12%, transparent) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 60% at 80% 25%, color-mix(in srgb, var(--c-rosy) 6%, transparent) 0%, transparent 45%),
+    radial-gradient(ellipse 70% 55% at 50% 85%, color-mix(in srgb, var(--c-dark) 15%, transparent) 0%, transparent 55%),
+    radial-gradient(ellipse 45% 45% at 65% 60%, color-mix(in srgb, var(--c-beige) 4%, transparent) 0%, transparent 50%);
   mix-blend-mode: soft-light;
   pointer-events: none;
 }
@@ -45,6 +102,11 @@
   background-size: 140px 140px;
   opacity: 0.18;
   pointer-events: none;
+}
+
+/* 粉色皮肤下进一步对行程图标做暖色统一，避免残留脏绿色观感 */
+.theme-pink .journey-icon-tint svg {
+  filter: sepia(0.32) saturate(1.12) hue-rotate(-12deg);
 }
 
 :root {
@@ -177,9 +239,9 @@
     padding: 0;
     min-height: 100vh;
     width: 100%;
-    background-color: #1a3a2a;
+    background-color: var(--c-bg-1A3A2A);
     overscroll-behavior: none;
-    touch-action: none;
+    touch-action: manipulation;
   }
 
   html {
@@ -242,5 +304,11 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+
+  /* iOS Safari: 输入框小于16px会自动缩放页面 */
+  .no-ios-zoom-input {
+    font-size: 16px !important;
+    line-height: 1.35;
   }
 }

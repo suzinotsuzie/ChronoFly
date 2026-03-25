@@ -35,11 +35,11 @@ function saveProfile(name: string, avatar: string): void {
 
 // ── Palette (from icon HTML) ──────────────────────────────────────────────
 const C = {
-  midnight: '#0D2B2B',
-  dark:     '#1E4D3A',
-  moss:     '#7A9268',
-  beige:    '#E4D5B7',
-  rosy:     '#C08070',
+  midnight: 'var(--c-midnight)',
+  dark:     'var(--c-dark)',
+  moss:     'var(--c-moss)',
+  beige:    'var(--c-beige)',
+  rosy:     'var(--c-rosy)',
 };
 
 // ── 莫奈睡莲风格动作音效（Web Audio API，无外链）────────────────────────────
@@ -148,6 +148,7 @@ const MOCK_FLIGHTS: Record<string, string> = {
 
 // ── Local storage keys ────────────────────────────────────────────────────
 const FLIGHT_STATE_KEY = 'chrono_flight_state_v1';
+const SKIN_KEY = 'chrono_skin_v1';
 
 function mockDeparture(flightNo: string): string {
   const key = flightNo.toUpperCase().trim();
@@ -181,12 +182,13 @@ const DEFAULT_DURATIONS: Durations = {
 
 function calcTimes(depStr: string, d: Durations): Record<string, number> {
   const dep     = toMin(depStr);
-  const board   = dep      - d.board;
-  const gate    = board    - d.gate;
-  const clear   = gate     - d.clear;
-  const rollout = clear    - d.rollout;
-  const polish  = rollout  - d.polish;
-  const linger  = polish   - d.linger;
+  // 规则：相邻节点时间差 = My Ritual 对应配置时长（依次类推）
+  const board   = dep;
+  const gate    = board    - d.board;
+  const clear   = gate     - d.gate;
+  const rollout = clear    - d.clear;
+  const polish  = rollout  - d.rollout;
+  const linger  = polish   - d.polish;
   const wake    = linger   - d.linger;
   return { wake, linger, polish, rollout, clear, gate, board };
 }
@@ -197,22 +199,22 @@ const IconRingRing = () => (
     <defs>
       <radialGradient id="bell1" cx="36%" cy="28%" r="68%">
         <stop offset="0%" stopColor="#E4D5B7"/>
-        <stop offset="50%" stopColor="#CEBF9E"/>
+        <stop offset="50%" stopColor="var(--c-roseLight)"/>
         <stop offset="100%" stopColor="#A89070"/>
       </radialGradient>
     </defs>
     <path d="M36 12 C24 12 18 22 18 32 L18 46 Q18 50 22 50 L50 50 Q54 50 54 46 L54 32 C54 22 48 12 36 12Z" fill="url(#bell1)"/>
     <path d="M36 14 C26 14 21 23 21 32 L21 42" stroke="#E4D5B7" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.38"/>
-    <circle cx="36" cy="54" r="4.5" fill="#C08070"/>
-    <circle cx="36" cy="54" r="2.2" fill="#9A6050"/>
+    <circle cx="36" cy="54" r="4.5" fill="var(--c-rosy)"/>
+    <circle cx="36" cy="54" r="2.2" fill="var(--c-roseDeep)"/>
     <path d="M30 12 Q36 6 42 12" stroke="#A89070" strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.8"/>
-    <circle cx="36" cy="10" r="2.8" fill="#CEBF9E" opacity="0.75"/>
-    <path d="M10 28 Q6 36 10 44"  stroke="#C08070" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
-    <path d="M6 22  Q1 36 6 50"   stroke="#C08070" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.35"/>
-    <path d="M62 28 Q66 36 62 44" stroke="#C08070" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
-    <path d="M66 22 Q71 36 66 50" stroke="#C08070" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.35"/>
-    <ellipse cx="18" cy="62" rx="8"   ry="3.2" fill="#7A9268" opacity="0.5"  transform="rotate(-8 18 62)"/>
-    <ellipse cx="54" cy="63" rx="6.5" ry="2.8" fill="#1E4D3A" opacity="0.55" transform="rotate(6 54 63)"/>
+    <circle cx="36" cy="10" r="2.8" fill="var(--c-roseLight)" opacity="0.75"/>
+    <path d="M10 28 Q6 36 10 44"  stroke="var(--c-rosy)" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
+    <path d="M6 22  Q1 36 6 50"   stroke="var(--c-rosy)" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.35"/>
+    <path d="M62 28 Q66 36 62 44" stroke="var(--c-rosy)" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
+    <path d="M66 22 Q71 36 66 50" stroke="var(--c-rosy)" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.35"/>
+    <ellipse cx="18" cy="62" rx="8"   ry="3.2" fill="var(--c-moss)" opacity="0.5"  transform="rotate(-8 18 62)"/>
+    <ellipse cx="54" cy="63" rx="6.5" ry="2.8" fill="var(--c-dark)" opacity="0.55" transform="rotate(6 54 63)"/>
   </svg>
 );
 
@@ -220,31 +222,31 @@ const IconWakeyWakey = () => (
   <svg width="32" height="32" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <radialGradient id="iris2" cx="40%" cy="38%" r="58%">
-        <stop offset="0%" stopColor="#7A9268"/>
-        <stop offset="55%" stopColor="#1E4D3A"/>
-        <stop offset="100%" stopColor="#0D2B2B"/>
+        <stop offset="0%" stopColor="var(--c-moss)"/>
+        <stop offset="55%" stopColor="var(--c-dark)"/>
+        <stop offset="100%" stopColor="var(--c-midnight)"/>
       </radialGradient>
       <clipPath id="eyeclip2">
         <path d="M10 36 Q36 16 62 36 Q36 52 10 36Z"/>
       </clipPath>
     </defs>
     <path d="M10 36 Q36 16 62 36 Q36 56 10 36Z" fill="#E4D5B7" opacity="0.92"/>
-    <path d="M10 36 Q36 16 62 36 Q50 28 36 26 Q22 28 10 36Z" fill="#C4B08A" opacity="0.88"/>
+    <path d="M10 36 Q36 16 62 36 Q50 28 36 26 Q22 28 10 36Z" fill="var(--c-roseMid)" opacity="0.88"/>
     <circle cx="36" cy="37" r="10" fill="url(#iris2)" clipPath="url(#eyeclip2)"/>
-    <circle cx="36" cy="37" r="5"  fill="#0D2B2B" opacity="0.9"  clipPath="url(#eyeclip2)"/>
+    <circle cx="36" cy="37" r="5"  fill="var(--c-midnight)" opacity="0.9"  clipPath="url(#eyeclip2)"/>
     <circle cx="32" cy="34" r="2.5" fill="#E4D5B7" opacity="0.4" clipPath="url(#eyeclip2)"/>
-    <path d="M10 36 Q36 16 62 36" stroke="#C08070" strokeWidth="3.5" strokeLinecap="round" fill="none"/>
-    <path d="M10 36 Q36 52 62 36" stroke="#C08070" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.55"/>
-    <line x1="22" y1="24" x2="20" y2="17" stroke="#C08070" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
-    <line x1="30" y1="19" x2="29" y2="12" stroke="#C08070" strokeWidth="2" strokeLinecap="round" opacity="0.65"/>
-    <line x1="36" y1="17" x2="36" y2="10" stroke="#C08070" strokeWidth="2" strokeLinecap="round" opacity="0.6"/>
-    <line x1="43" y1="19" x2="44" y2="12" stroke="#C08070" strokeWidth="2" strokeLinecap="round" opacity="0.65"/>
-    <line x1="50" y1="24" x2="52" y2="17" stroke="#C08070" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
-    <text x="52" y="22" fontFamily="Cormorant Garamond, serif" fontStyle="italic" fontSize="11" fill="#7A9268" opacity="0.7">z</text>
-    <text x="58" y="15" fontFamily="Cormorant Garamond, serif" fontStyle="italic" fontSize="9"  fill="#7A9268" opacity="0.5">z</text>
-    <text x="63" y="9"  fontFamily="Cormorant Garamond, serif" fontStyle="italic" fontSize="7"  fill="#7A9268" opacity="0.35">z</text>
-    <ellipse cx="18" cy="60" rx="7" ry="2.8" fill="#7A9268" opacity="0.45" transform="rotate(-6 18 60)"/>
-    <ellipse cx="54" cy="61" rx="6" ry="2.4" fill="#1E4D3A" opacity="0.5"  transform="rotate(5 54 61)"/>
+    <path d="M10 36 Q36 16 62 36" stroke="var(--c-rosy)" strokeWidth="3.5" strokeLinecap="round" fill="none"/>
+    <path d="M10 36 Q36 52 62 36" stroke="var(--c-rosy)" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.55"/>
+    <line x1="22" y1="24" x2="20" y2="17" stroke="var(--c-rosy)" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
+    <line x1="30" y1="19" x2="29" y2="12" stroke="var(--c-rosy)" strokeWidth="2" strokeLinecap="round" opacity="0.65"/>
+    <line x1="36" y1="17" x2="36" y2="10" stroke="var(--c-rosy)" strokeWidth="2" strokeLinecap="round" opacity="0.6"/>
+    <line x1="43" y1="19" x2="44" y2="12" stroke="var(--c-rosy)" strokeWidth="2" strokeLinecap="round" opacity="0.65"/>
+    <line x1="50" y1="24" x2="52" y2="17" stroke="var(--c-rosy)" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
+    <text x="52" y="22" fontFamily="Cormorant Garamond, serif" fontStyle="italic" fontSize="11" fill="var(--c-moss)" opacity="0.7">z</text>
+    <text x="58" y="15" fontFamily="Cormorant Garamond, serif" fontStyle="italic" fontSize="9"  fill="var(--c-moss)" opacity="0.5">z</text>
+    <text x="63" y="9"  fontFamily="Cormorant Garamond, serif" fontStyle="italic" fontSize="7"  fill="var(--c-moss)" opacity="0.35">z</text>
+    <ellipse cx="18" cy="60" rx="7" ry="2.8" fill="var(--c-moss)" opacity="0.45" transform="rotate(-6 18 60)"/>
+    <ellipse cx="54" cy="61" rx="6" ry="2.4" fill="var(--c-dark)" opacity="0.5"  transform="rotate(5 54 61)"/>
   </svg>
 );
 
@@ -253,28 +255,28 @@ const IconLeavingHome = () => (
     <defs>
       <linearGradient id="wall3" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor="#E4D5B7" stopOpacity="0.92"/>
-        <stop offset="100%" stopColor="#C4B08A" stopOpacity="0.68"/>
+        <stop offset="100%" stopColor="var(--c-roseMid)" stopOpacity="0.68"/>
       </linearGradient>
       <linearGradient id="roof3" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#C08070"/>
-        <stop offset="100%" stopColor="#9A6050"/>
+        <stop offset="0%" stopColor="var(--c-rosy)"/>
+        <stop offset="100%" stopColor="var(--c-roseDeep)"/>
       </linearGradient>
     </defs>
     <rect x="10" y="36" width="36" height="26" rx="2" fill="url(#wall3)"/>
     <path d="M6 38 L28 14 L50 38Z" fill="url(#roof3)"/>
     <path d="M8 38 L28 16 L48 38" stroke="#E4D5B7" strokeWidth="1" fill="none" opacity="0.32"/>
-    <path d="M21 62 L21 46 Q21 40 28 40 Q35 40 35 46 L35 62Z" fill="#1E4D3A" opacity="0.82"/>
-    <circle cx="33" cy="52" r="2" fill="#C08070" opacity="0.85"/>
-    <rect x="12" y="42" width="8" height="8" rx="1.5" fill="#1E4D3A" opacity="0.5"/>
-    <line x1="16" y1="42" x2="16" y2="50" stroke="#7A9268" strokeWidth="1.2" opacity="0.6"/>
-    <line x1="12" y1="46" x2="20" y2="46" stroke="#7A9268" strokeWidth="1.2" opacity="0.6"/>
-    <rect x="38" y="20" width="5" height="12" rx="1" fill="#C08070" opacity="0.65"/>
-    <path d="M52 44 L64 36" stroke="#C08070" strokeWidth="3.8" strokeLinecap="round"/>
-    <path d="M58 30 L64 36 L58 42" stroke="#C08070" strokeWidth="3.8" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+    <path d="M21 62 L21 46 Q21 40 28 40 Q35 40 35 46 L35 62Z" fill="var(--c-dark)" opacity="0.82"/>
+    <circle cx="33" cy="52" r="2" fill="var(--c-rosy)" opacity="0.85"/>
+    <rect x="12" y="42" width="8" height="8" rx="1.5" fill="var(--c-dark)" opacity="0.5"/>
+    <line x1="16" y1="42" x2="16" y2="50" stroke="var(--c-moss)" strokeWidth="1.2" opacity="0.6"/>
+    <line x1="12" y1="46" x2="20" y2="46" stroke="var(--c-moss)" strokeWidth="1.2" opacity="0.6"/>
+    <rect x="38" y="20" width="5" height="12" rx="1" fill="var(--c-rosy)" opacity="0.65"/>
+    <path d="M52 44 L64 36" stroke="var(--c-rosy)" strokeWidth="3.8" strokeLinecap="round"/>
+    <path d="M58 30 L64 36 L58 42" stroke="var(--c-rosy)" strokeWidth="3.8" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
     <circle cx="55" cy="30" r="2.2" fill="#E4D5B7" opacity="0.55"/>
-    <circle cx="61" cy="27" r="1.6" fill="#C08070" opacity="0.45"/>
-    <ellipse cx="8"  cy="64" rx="6"   ry="2.5" fill="#7A9268" opacity="0.5"/>
-    <ellipse cx="48" cy="65" rx="5.5" ry="2.2" fill="#1E4D3A" opacity="0.5"/>
+    <circle cx="61" cy="27" r="1.6" fill="var(--c-rosy)" opacity="0.45"/>
+    <ellipse cx="8"  cy="64" rx="6"   ry="2.5" fill="var(--c-moss)" opacity="0.5"/>
+    <ellipse cx="48" cy="65" rx="5.5" ry="2.2" fill="var(--c-dark)" opacity="0.5"/>
   </svg>
 );
 
@@ -283,25 +285,25 @@ const IconTerminalEntry = () => (
     <defs>
       <linearGradient id="facade4" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor="#E4D5B7" stopOpacity="0.85"/>
-        <stop offset="100%" stopColor="#7A9268" stopOpacity="0.5"/>
+        <stop offset="100%" stopColor="var(--c-moss)" stopOpacity="0.5"/>
       </linearGradient>
       <linearGradient id="archfill4" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#7A9268" stopOpacity="0.8"/>
-        <stop offset="100%" stopColor="#1E4D3A" stopOpacity="0.95"/>
+        <stop offset="0%" stopColor="var(--c-moss)" stopOpacity="0.8"/>
+        <stop offset="100%" stopColor="var(--c-dark)" stopOpacity="0.95"/>
       </linearGradient>
     </defs>
     <rect x="4" y="38" width="64" height="26" rx="3" fill="url(#facade4)"/>
     <path d="M22 64 L22 46 Q22 34 36 34 Q50 34 50 46 L50 64Z" fill="url(#archfill4)"/>
     <path d="M22 46 Q22 34 36 34 Q50 34 50 46" stroke="#E4D5B7" strokeWidth="2" fill="none" opacity="0.5"/>
-    <rect x="8"  y="44" width="11" height="11" rx="2" fill="#1E4D3A" opacity="0.65"/>
-    <rect x="53" y="44" width="11" height="11" rx="2" fill="#1E4D3A" opacity="0.65"/>
+    <rect x="8"  y="44" width="11" height="11" rx="2" fill="var(--c-dark)" opacity="0.65"/>
+    <rect x="53" y="44" width="11" height="11" rx="2" fill="var(--c-dark)" opacity="0.65"/>
     <path d="M2 38 Q36 24 70 38" stroke="#E4D5B7" strokeWidth="2.2" fill="none" opacity="0.42"/>
     <rect x="30" y="14" width="12" height="24" rx="2" fill="#E4D5B7" opacity="0.6"/>
-    <rect x="27" y="11" width="18" height="7"  rx="2" fill="#C08070" opacity="0.78"/>
-    <path d="M44 9 L58 6 L56 9 L58 12 L44 9Z" fill="#C08070" opacity="0.78"/>
-    <path d="M44 9 L32 8 L33 9 L32 10 L44 9Z" fill="#C08070" opacity="0.62"/>
-    <ellipse cx="10" cy="65" rx="6"   ry="2.2" fill="#7A9268" opacity="0.45"/>
-    <ellipse cx="62" cy="65" rx="5.5" ry="2"   fill="#1E4D3A" opacity="0.45"/>
+    <rect x="27" y="11" width="18" height="7"  rx="2" fill="var(--c-rosy)" opacity="0.78"/>
+    <path d="M44 9 L58 6 L56 9 L58 12 L44 9Z" fill="var(--c-rosy)" opacity="0.78"/>
+    <path d="M44 9 L32 8 L33 9 L32 10 L44 9Z" fill="var(--c-rosy)" opacity="0.62"/>
+    <ellipse cx="10" cy="65" rx="6"   ry="2.2" fill="var(--c-moss)" opacity="0.45"/>
+    <ellipse cx="62" cy="65" rx="5.5" ry="2"   fill="var(--c-dark)" opacity="0.45"/>
   </svg>
 );
 
@@ -309,19 +311,19 @@ const IconPastSecurity = () => (
   <svg width="32" height="32" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="shield5" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#7A9268"/>
-        <stop offset="100%" stopColor="#1E4D3A"/>
+        <stop offset="0%" stopColor="var(--c-moss)"/>
+        <stop offset="100%" stopColor="var(--c-dark)"/>
       </linearGradient>
     </defs>
     <path d="M36 8 C36 8 12 15 12 28 L12 42 C12 56 22 64 36 68 C50 64 60 56 60 42 L60 28 C60 15 36 8 36 8Z" fill="url(#shield5)" opacity="0.88"/>
     <path d="M36 11 C36 11 15 17.5 15 28 L15 33" stroke="#E4D5B7" strokeWidth="1.5" strokeLinecap="round" opacity="0.3" fill="none"/>
-    <path d="M36 8 C36 8 12 15 12 28 L12 42 C12 56 22 64 36 68 C50 64 60 56 60 42 L60 28 C60 15 36 8 36 8Z" stroke="#7A9268" strokeWidth="1.2" fill="none" opacity="0.55"/>
+    <path d="M36 8 C36 8 12 15 12 28 L12 42 C12 56 22 64 36 68 C50 64 60 56 60 42 L60 28 C60 15 36 8 36 8Z" stroke="var(--c-moss)" strokeWidth="1.2" fill="none" opacity="0.55"/>
     <path d="M20 38 L31 51 L52 24" stroke="#E4D5B7" strokeWidth="6.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
     <path d="M20 38 L31 51 L52 24" stroke="#E4D5B7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.42"/>
-    <circle cx="10" cy="22" r="2.2" fill="#C08070" opacity="0.42"/>
-    <circle cx="62" cy="24" r="1.8" fill="#7A9268" opacity="0.42"/>
-    <ellipse cx="22" cy="70" rx="7" ry="2.5" fill="#7A9268" opacity="0.45"/>
-    <ellipse cx="50" cy="71" rx="6" ry="2.2" fill="#1E4D3A" opacity="0.45"/>
+    <circle cx="10" cy="22" r="2.2" fill="var(--c-rosy)" opacity="0.42"/>
+    <circle cx="62" cy="24" r="1.8" fill="var(--c-moss)" opacity="0.42"/>
+    <ellipse cx="22" cy="70" rx="7" ry="2.5" fill="var(--c-moss)" opacity="0.45"/>
+    <ellipse cx="50" cy="71" rx="6" ry="2.2" fill="var(--c-dark)" opacity="0.45"/>
   </svg>
 );
 
@@ -330,22 +332,22 @@ const IconAtTheGate = () => (
     <defs>
       <linearGradient id="pillar6" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor="#E4D5B7" stopOpacity="0.92"/>
-        <stop offset="100%" stopColor="#C08070" stopOpacity="0.6"/>
+        <stop offset="100%" stopColor="var(--c-rosy)" stopOpacity="0.6"/>
       </linearGradient>
     </defs>
     <rect x="6"  y="28" width="14" height="36" rx="7" fill="url(#pillar6)"/>
     <rect x="52" y="28" width="14" height="36" rx="7" fill="url(#pillar6)"/>
     <path d="M6 34 Q36 4 66 34" stroke="url(#pillar6)" strokeWidth="12" fill="none" strokeLinecap="round"/>
-    <rect x="26" y="12" width="20" height="12" rx="3" fill="#1E4D3A" opacity="0.88"/>
+    <rect x="26" y="12" width="20" height="12" rx="3" fill="var(--c-dark)" opacity="0.88"/>
     <text x="36" y="22" textAnchor="middle" fontFamily="Cormorant Garamond, serif" fontSize="10" fill="#E4D5B7" opacity="0.92" fontStyle="italic">G</text>
     <circle cx="36" cy="44" r="5.5" fill="#E4D5B7" opacity="0.82"/>
     <path d="M31 50 Q36 62 41 50" stroke="#E4D5B7" strokeWidth="3.5" strokeLinecap="round" fill="none" opacity="0.75"/>
     <path d="M33 56 L30 64" stroke="#E4D5B7" strokeWidth="3" strokeLinecap="round" opacity="0.58"/>
     <path d="M39 56 L42 64" stroke="#E4D5B7" strokeWidth="3" strokeLinecap="round" opacity="0.58"/>
-    <rect x="44" y="52" width="8" height="10" rx="2" fill="#C08070" opacity="0.78"/>
-    <line x1="48" y1="50" x2="48" y2="52" stroke="#C08070" strokeWidth="2.2" strokeLinecap="round" opacity="0.75"/>
-    <ellipse cx="8"  cy="66" rx="6"   ry="2.5" fill="#7A9268" opacity="0.45" transform="rotate(-8 8 66)"/>
-    <ellipse cx="64" cy="66" rx="5.5" ry="2.2" fill="#1E4D3A" opacity="0.45"/>
+    <rect x="44" y="52" width="8" height="10" rx="2" fill="var(--c-rosy)" opacity="0.78"/>
+    <line x1="48" y1="50" x2="48" y2="52" stroke="var(--c-rosy)" strokeWidth="2.2" strokeLinecap="round" opacity="0.75"/>
+    <ellipse cx="8"  cy="66" rx="6"   ry="2.5" fill="var(--c-moss)" opacity="0.45" transform="rotate(-8 8 66)"/>
+    <ellipse cx="64" cy="66" rx="5.5" ry="2.2" fill="var(--c-dark)" opacity="0.45"/>
   </svg>
 );
 
@@ -354,23 +356,23 @@ const IconGetOnBoard = () => (
     <defs>
       <linearGradient id="plane7" x1="0" y1="1" x2="1" y2="0">
         <stop offset="0%" stopColor="#E4D5B7"/>
-        <stop offset="100%" stopColor="#C8D8CC"/>
+        <stop offset="100%" stopColor="var(--c-mint)"/>
       </linearGradient>
     </defs>
-    <path d="M4 60 Q18 48 34 38" stroke="#7A9268" strokeWidth="3"   fill="none" strokeLinecap="round" strokeDasharray="2 6" opacity="0.65"/>
-    <path d="M4 66 Q20 54 34 43" stroke="#1E4D3A" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeDasharray="1.5 6" opacity="0.42"/>
+    <path d="M4 60 Q18 48 34 38" stroke="var(--c-moss)" strokeWidth="3"   fill="none" strokeLinecap="round" strokeDasharray="2 6" opacity="0.65"/>
+    <path d="M4 66 Q20 54 34 43" stroke="var(--c-dark)" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeDasharray="1.5 6" opacity="0.42"/>
     <path d="M34 38 C42 28 64 22 68 29 C72 36 56 48 34 44 Z" fill="url(#plane7)"/>
     <path d="M66 29 L74 29 L66 33 Z" fill="#E4D5B7" opacity="0.88"/>
     <path d="M46 42 L36 64 L54 48 Z" fill="#E4D5B7" opacity="0.72"/>
-    <path d="M34 38 L26 22 L38 34 Z" fill="#C08070" opacity="0.88"/>
+    <path d="M34 38 L26 22 L38 34 Z" fill="var(--c-rosy)" opacity="0.88"/>
     <path d="M34 43 L26 56 L38 47 Z" fill="#E4D5B7" opacity="0.55"/>
-    <circle cx="58" cy="30" r="2.8" fill="#1E4D3A" opacity="0.78"/>
-    <circle cx="51" cy="33" r="2.8" fill="#1E4D3A" opacity="0.78"/>
-    <circle cx="44" cy="35" r="2.8" fill="#1E4D3A" opacity="0.78"/>
-    <path d="M2 64 Q14 60 24 64 Q34 68 44 64 Q54 60 70 64" stroke="#1E4D3A" strokeWidth="1.8" fill="none" strokeLinecap="round" opacity="0.45"/>
-    <ellipse cx="10" cy="67" rx="9"   ry="3.2" fill="#7A9268" opacity="0.5"/>
-    <ellipse cx="36" cy="70" rx="7"   ry="2.8" fill="#1E4D3A" opacity="0.45"/>
-    <ellipse cx="58" cy="68" rx="5.5" ry="2.2" fill="#7A9268" opacity="0.4"/>
+    <circle cx="58" cy="30" r="2.8" fill="var(--c-dark)" opacity="0.78"/>
+    <circle cx="51" cy="33" r="2.8" fill="var(--c-dark)" opacity="0.78"/>
+    <circle cx="44" cy="35" r="2.8" fill="var(--c-dark)" opacity="0.78"/>
+    <path d="M2 64 Q14 60 24 64 Q34 68 44 64 Q54 60 70 64" stroke="var(--c-dark)" strokeWidth="1.8" fill="none" strokeLinecap="round" opacity="0.45"/>
+    <ellipse cx="10" cy="67" rx="9"   ry="3.2" fill="var(--c-moss)" opacity="0.5"/>
+    <ellipse cx="36" cy="70" rx="7"   ry="2.8" fill="var(--c-dark)" opacity="0.45"/>
+    <ellipse cx="58" cy="68" rx="5.5" ry="2.2" fill="var(--c-moss)" opacity="0.4"/>
   </svg>
 );
 
@@ -396,6 +398,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [revealed, setRevealed]         = useState(false);
   const [goShakeKey, setGoShakeKey]     = useState(0);
+  const [skin, setSkin]                 = useState<'theme-green' | 'theme-pink'>('theme-green');
   const [userName, setUserName]         = useState(() => loadProfile().name);
   const [userAvatar, setUserAvatar]     = useState(() => loadProfile().avatar);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
@@ -416,13 +419,13 @@ export default function App() {
   const [datePickerMonth, setDatePickerMonth] = useState<Date | undefined>(() => parseFlightDate(flightDate));
 
   const phoneBackground = [
-    'radial-gradient(ellipse 90% 55% at 15% 8%,  rgba(30,77,58,0.65) 0%, transparent 55%)',
-    'radial-gradient(ellipse 70% 45% at 85% 22%, rgba(122,146,104,0.15) 0%, transparent 55%)',
-    'radial-gradient(ellipse 80% 55% at 40% 90%, rgba(13,43,43,0.9) 0%, transparent 60%)',
-    '#1a3a2a',
+    'radial-gradient(ellipse 90% 55% at 15% 8%, color-mix(in srgb, var(--c-dark) 65%, transparent) 0%, transparent 55%)',
+    'radial-gradient(ellipse 70% 45% at 85% 22%, color-mix(in srgb, var(--c-moss) 15%, transparent) 0%, transparent 55%)',
+    'radial-gradient(ellipse 80% 55% at 40% 90%, color-mix(in srgb, var(--c-midnight) 90%, transparent) 0%, transparent 60%)',
+    'var(--c-bg-1A3A2A)',
   ].join(', ');
 
-  const alarmBackground = 'linear-gradient(135deg, rgba(30,77,58,0.55) 0%, rgba(228,213,183,0.06) 100%)';
+  const alarmBackground = 'linear-gradient(135deg, color-mix(in srgb, var(--c-dark) 55%, transparent) 0%, color-mix(in srgb, var(--c-beige) 6%, transparent) 100%)';
 
   // ── Restore last flight state for today ──────────────────────────────────
   useEffect(() => {
@@ -455,6 +458,32 @@ export default function App() {
       // ignore parse errors
     }
   }, []);
+
+  // ── Skin apply (green/pink) ─────────────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let saved: 'theme-green' | 'theme-pink' = 'theme-green';
+    try {
+      const raw = localStorage.getItem(SKIN_KEY);
+      saved = raw === 'theme-pink' ? 'theme-pink' : 'theme-green';
+    } catch {
+      // ignore
+    }
+    setSkin(saved);
+    document.body.classList.remove('theme-green', 'theme-pink');
+    document.body.classList.add(saved);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(SKIN_KEY, skin);
+    } catch {
+      // ignore
+    }
+    document.body.classList.remove('theme-green', 'theme-pink');
+    document.body.classList.add(skin);
+  }, [skin]);
 
   // ── Persist current flight state ─────────────────────────────────────────
   useEffect(() => {
@@ -537,9 +566,13 @@ export default function App() {
     e.target.value = '';
   };
 
+  const isPink = skin === 'theme-pink';
+
   const depStr   = submitted ? (flightDepStr ?? mockDeparture(submitted)) : null;
   const times    = depStr   ? calcTimes(depStr, durations) : null;
   const alarmStr = times    ? toStr(times.wake) : null;
+
+  const journeyNodes = isPink ? NODES.filter(n => n.id !== 'linger') : NODES;
 
   const submit = () => {
     const val = flightNo.trim().toUpperCase();
@@ -609,20 +642,30 @@ export default function App() {
     setDurations(prev => ({ ...prev, [key]: Math.max(5, Math.min(120, prev[key] + delta)) }));
   };
 
+  // 点击“背景空白区域”切换皮肤：只要点击目标不在任何卡片模块内，就在 theme-green/theme-pink 间切换
+  const onBgClickToggleSkin = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (settingsOpen || profileEditOpen || datePickerOpen) return;
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    // 仅当点击“不属于任何半透明模块”时切换皮肤
+    if (target.closest('[data-skin-card="1"]')) return;
+    setSkin(prev => (prev === 'theme-pink' ? 'theme-green' : 'theme-pink'));
+  };
+
   return (
     <div
       className="chrono-bg"
+      onPointerDown={onBgClickToggleSkin}
       style={{
-        width: '100vw',
-        height: '100vh',
+        width: '100%',
+        height: '100dvh',
         display: 'flex',
         alignItems: 'stretch',
         justifyContent: 'stretch',
-        background: '#1a3a2a',
-        paddingTop: 'max(8px, env(safe-area-inset-top, 0px))',
-        paddingBottom: 'max(8px, env(safe-area-inset-bottom, 0px))',
+        background: 'var(--c-bg-1A3A2A)',
+        padding: 0,
         boxSizing: 'border-box',
-        touchAction: 'none',
+        touchAction: 'manipulation',
         overscrollBehavior: 'none',
       }}
     >
@@ -646,29 +689,32 @@ export default function App() {
         <div style={{
           position: 'absolute', inset: 0, zIndex: 0, borderRadius: 'inherit',
           background: [
-            'radial-gradient(ellipse 55% 45% at 10% 12%, rgba(122,146,104,0.08) 0%, transparent 50%)',
+            'radial-gradient(ellipse 55% 45% at 10% 12%, color-mix(in srgb, var(--c-moss) 8%, transparent) 0%, transparent 50%)',
             'radial-gradient(ellipse 45% 50% at 88% 18%, rgba(228,213,183,0.05) 0%, transparent 45%)',
-            'radial-gradient(ellipse 60% 50% at 35% 92%, rgba(30,77,58,0.12) 0%, transparent 50%)',
+            'radial-gradient(ellipse 60% 50% at 35% 92%, color-mix(in srgb, var(--c-dark) 12%, transparent) 0%, transparent 50%)',
           ].join(', '),
           mixBlendMode: 'soft-light',
           pointerEvents: 'none',
         }} aria-hidden />
         {/* Ambient blobs */}
-        <div style={{ position:'absolute', top:-20, left:-30, width:200, height:200, borderRadius:'50%', background:'rgba(122,146,104,0.08)', filter:'blur(50px)', pointerEvents:'none' }}/>
-        <div style={{ position:'absolute', top:200, right:-40, width:160, height:160, borderRadius:'50%', background:'rgba(192,128,112,0.06)', filter:'blur(40px)', pointerEvents:'none' }}/>
-        <div style={{ position:'absolute', bottom:60, left:10, width:200, height:200, borderRadius:'50%', background:'rgba(30,77,58,0.25)', filter:'blur(55px)', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', top:-20, left:-30, width:200, height:200, borderRadius:'50%', background:'color-mix(in srgb, var(--c-moss) 8%, transparent)', filter:'blur(50px)', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', top:200, right:-40, width:160, height:160, borderRadius:'50%', background:'color-mix(in srgb, var(--c-rosy) 6%, transparent)', filter:'blur(40px)', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:60, left:10, width:200, height:200, borderRadius:'50%', background:'color-mix(in srgb, var(--c-dark) 25%, transparent)', filter:'blur(55px)', pointerEvents:'none' }}/>
 
         {/* ── Main content ── */}
         <div style={{
           position:'relative', zIndex:1,
           height:'100%', boxSizing:'border-box',
           display:'flex', flexDirection:'column',
-          padding:'50px 16px 18px',
-          gap:7,
+          paddingTop: `calc(26px + env(safe-area-inset-top, 0px))`,
+          paddingLeft: 16,
+          paddingRight: 16,
+          paddingBottom: `calc(14px + env(safe-area-inset-bottom, 0px))`,
+          gap:5,
         }}>
 
           {/* ── Header ── */}
-          <div style={{ textAlign:'center', flexShrink:0, marginBottom:10 }}>
+          <div style={{ textAlign:'center', flexShrink:0, marginBottom:4 }}>
             <div style={{
               fontFamily:'"Cormorant Garamond", Georgia, serif',
               fontStyle:'italic', fontWeight:300,
@@ -688,6 +734,7 @@ export default function App() {
           />
           <div
             ref={avatarBlockRef}
+            data-skin-card="1"
             style={{
             flexShrink:0,
             background:'rgba(228,213,183,0.06)',
@@ -763,7 +810,7 @@ export default function App() {
                       width:popoverW,
                       maxHeight:`calc(100vh - ${pad * 2}px)`,
                       overflow:'auto',
-                      background:'#152A2A',
+                      background:'var(--c-bg-152A2A)',
                       border:'1px solid rgba(228,213,183,0.14)',
                       borderRadius:12, padding:16, boxShadow:'0 12px 32px rgba(0,0,0,0.4)',
                       fontFamily:"'Jost', system-ui, sans-serif",
@@ -826,7 +873,7 @@ export default function App() {
                         day: { color:C.beige, fontSize:13, width:36, height:36 },
                       }}
                       modifiersStyles={{
-                        selected: { background:'rgba(192,128,112,0.35)', color:C.beige },
+                        selected: { background:'color-mix(in srgb, var(--c-rosy) 35%, transparent)', color:C.beige },
                         today: { color:C.moss, fontWeight:600 },
                       }}
                     />
@@ -848,9 +895,13 @@ export default function App() {
                     onChange={e => setFlightNo(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && submit()}
                     placeholder="e.g. MU5129"
+                    className="no-ios-zoom-input"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     style={{
                       background:'transparent', border:'none', outline:'none',
-                      color:C.beige, fontSize:14, width:'100%', padding:0,
+                      color:C.beige, width:'100%', padding:0,
                       fontFamily:'"Cormorant Garamond", Georgia, serif',
                       letterSpacing:'0.04em', fontStyle:'italic',
                     }}
@@ -861,12 +912,13 @@ export default function App() {
             <motion.button
               key={goShakeKey}
               onClick={submit}
+              data-skin-card="1"
               initial={{ x: 0 }}
               animate={{ x: goShakeKey > 0 ? [0, -2, 2, -1, 1, 0] : 0 }}
               transition={{ duration: 0.2 }}
               style={{
-                background:'rgba(192,128,112,0.2)',
-                border:'1px solid rgba(192,128,112,0.38)',
+                background:'color-mix(in srgb, var(--c-rosy) 20%, transparent)',
+                border:'1px solid color-mix(in srgb, var(--c-rosy) 38%, transparent)',
                 borderRadius:9, padding:'5px 14px',
                 color:C.rosy,
                 fontSize:9, letterSpacing:'0.16em',
@@ -885,54 +937,54 @@ export default function App() {
             padding:'10px 20px 10px',
             textAlign:'center',
             position:'relative', overflow:'hidden',
-          }}>
+          }} data-skin-card="1">
             {/* 闹钟区装饰：左侧 Twin Pads，右侧 Rising Bud，中间少许 Floating Petals */}
             <div style={{ position:'absolute', inset:0, pointerEvents:'none', borderRadius:20, overflow:'hidden' }} aria-hidden>
               {/* 左侧：Twin Pads */}
               <svg width="100" height="70" viewBox="0 0 160 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ position:'absolute', left:-8, bottom:-5, opacity:0.42 }}>
                 <defs>
-                  <radialGradient id="alarm-padL-a" cx="42%" cy="38%" r="62%"><stop offset="0%" stopColor="#7A9268"/><stop offset="100%" stopColor="#0D2B2B"/></radialGradient>
-                  <radialGradient id="alarm-padL-b" cx="48%" cy="42%" r="58%"><stop offset="0%" stopColor="#1E4D3A"/><stop offset="100%" stopColor="#0D2B2B"/></radialGradient>
-                  <radialGradient id="alarm-budL" cx="50%" cy="35%" r="55%"><stop offset="0%" stopColor="#E4D5B7"/><stop offset="100%" stopColor="#C08070" stopOpacity="0.5"/></radialGradient>
+                  <radialGradient id="alarm-padL-a" cx="42%" cy="38%" r="62%"><stop offset="0%" stopColor="var(--c-moss)"/><stop offset="100%" stopColor="var(--c-midnight)"/></radialGradient>
+                  <radialGradient id="alarm-padL-b" cx="48%" cy="42%" r="58%"><stop offset="0%" stopColor="var(--c-dark)"/><stop offset="100%" stopColor="var(--c-midnight)"/></radialGradient>
+                  <radialGradient id="alarm-budL" cx="50%" cy="35%" r="55%"><stop offset="0%" stopColor="#E4D5B7"/><stop offset="100%" stopColor="var(--c-rosy)" stopOpacity="0.5"/></radialGradient>
                 </defs>
-                <ellipse cx="80" cy="75" rx="70" ry="20" fill="#1E4D3A" opacity="0.2"/>
+                <ellipse cx="80" cy="75" rx="70" ry="20" fill="var(--c-dark)" opacity="0.2"/>
                 <ellipse cx="95" cy="62" rx="36" ry="18" fill="url(#alarm-padL-b)" opacity="0.85" transform="rotate(-8 95 62)"/>
-                <path d="M95 44 L95 62" stroke="#0D2B2B" strokeWidth="1.2" opacity="0.4"/>
+                <path d="M95 44 L95 62" stroke="var(--c-midnight)" strokeWidth="1.2" opacity="0.4"/>
                 <ellipse cx="58" cy="68" rx="44" ry="22" fill="url(#alarm-padL-a)" opacity="0.9" transform="rotate(5 58 68)"/>
-                <path d="M58 46 L58 68" stroke="#0D2B2B" strokeWidth="1.5" opacity="0.45"/>
-                <path d="M58 68 Q38 60 20 63" stroke="#7A9268" strokeWidth="0.8" fill="none" opacity="0.5"/>
-                <path d="M58 68 Q78 60 96 63" stroke="#7A9268" strokeWidth="0.8" fill="none" opacity="0.5"/>
-                <path d="M95 44 Q98 36 95 30" stroke="#1E4D3A" strokeWidth="1.2" strokeLinecap="round" opacity="0.55"/>
+                <path d="M58 46 L58 68" stroke="var(--c-midnight)" strokeWidth="1.5" opacity="0.45"/>
+                <path d="M58 68 Q38 60 20 63" stroke="var(--c-moss)" strokeWidth="0.8" fill="none" opacity="0.5"/>
+                <path d="M58 68 Q78 60 96 63" stroke="var(--c-moss)" strokeWidth="0.8" fill="none" opacity="0.5"/>
+                <path d="M95 44 Q98 36 95 30" stroke="var(--c-dark)" strokeWidth="1.2" strokeLinecap="round" opacity="0.55"/>
                 <ellipse cx="95" cy="28" rx="5" ry="8" fill="url(#alarm-budL)" opacity="0.85" transform="rotate(10 95 28)"/>
-                <path d="M58 46 Q60 38 58 32" stroke="#1E4D3A" strokeWidth="1.5" strokeLinecap="round" opacity="0.55"/>
+                <path d="M58 46 Q60 38 58 32" stroke="var(--c-dark)" strokeWidth="1.5" strokeLinecap="round" opacity="0.55"/>
                 <ellipse cx="58" cy="24" rx="6" ry="10" fill="#E4D5B7" opacity="0.8" transform="rotate(0 58 24)"/>
-                <ellipse cx="58" cy="24" rx="6" ry="10" fill="#C08070" opacity="0.6" transform="rotate(40 58 32)"/>
-                <ellipse cx="58" cy="24" rx="6" ry="10" fill="#C08070" opacity="0.6" transform="rotate(-40 58 32)"/>
+                <ellipse cx="58" cy="24" rx="6" ry="10" fill="var(--c-rosy)" opacity="0.6" transform="rotate(40 58 32)"/>
+                <ellipse cx="58" cy="24" rx="6" ry="10" fill="var(--c-rosy)" opacity="0.6" transform="rotate(-40 58 32)"/>
                 <circle cx="58" cy="30" r="4.5" fill="#D4A860" opacity="0.85"/><circle cx="58" cy="30" r="2.5" fill="#E4D5B7" opacity="0.65"/>
               </svg>
               {/* 右侧：Rising Bud（竖茎 + 花蕾） */}
               <svg width="56" height="75" viewBox="0 0 80 110" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ position:'absolute', right:4, bottom:-2, opacity:0.38 }}>
                 <defs>
-                  <radialGradient id="alarm-padR" cx="44%" cy="40%" r="60%"><stop offset="0%" stopColor="#7A9268"/><stop offset="100%" stopColor="#1E4D3A"/></radialGradient>
-                  <linearGradient id="alarm-stemR" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1E4D3A"/><stop offset="100%" stopColor="#7A9268"/></linearGradient>
+                  <radialGradient id="alarm-padR" cx="44%" cy="40%" r="60%"><stop offset="0%" stopColor="var(--c-moss)"/><stop offset="100%" stopColor="var(--c-dark)"/></radialGradient>
+                  <linearGradient id="alarm-stemR" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--c-dark)"/><stop offset="100%" stopColor="var(--c-moss)"/></linearGradient>
                 </defs>
-                <ellipse cx="40" cy="88" rx="30" ry="10" fill="#1E4D3A" opacity="0.25"/>
+                <ellipse cx="40" cy="88" rx="30" ry="10" fill="var(--c-dark)" opacity="0.25"/>
                 <ellipse cx="40" cy="84" rx="28" ry="14" fill="url(#alarm-padR)" opacity="0.88"/>
-                <path d="M40 70 L40 84" stroke="#0D2B2B" strokeWidth="1.2" opacity="0.4"/>
-                <path d="M40 84 Q26 78 14 80" stroke="#7A9268" strokeWidth="0.7" fill="none" opacity="0.45"/>
-                <path d="M40 84 Q54 78 66 80" stroke="#7A9268" strokeWidth="0.7" fill="none" opacity="0.45"/>
+                <path d="M40 70 L40 84" stroke="var(--c-midnight)" strokeWidth="1.2" opacity="0.4"/>
+                <path d="M40 84 Q26 78 14 80" stroke="var(--c-moss)" strokeWidth="0.7" fill="none" opacity="0.45"/>
+                <path d="M40 84 Q54 78 66 80" stroke="var(--c-moss)" strokeWidth="0.7" fill="none" opacity="0.45"/>
                 <path d="M40 84 Q43 65 40 18" stroke="url(#alarm-stemR)" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
-                <ellipse cx="40" cy="16" rx="8" ry="14" fill="#C08070" opacity="0.78"/>
+                <ellipse cx="40" cy="16" rx="8" ry="14" fill="var(--c-rosy)" opacity="0.78"/>
                 <ellipse cx="40" cy="16" rx="5" ry="11" fill="#E4D5B7" opacity="0.72"/>
                 <ellipse cx="40" cy="16" rx="3" ry="8" fill="#E4D5B7" opacity="0.85"/>
-                <path d="M34 22 Q32 28 36 30" stroke="#1E4D3A" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
-                <path d="M46 22 Q48 28 44 30" stroke="#1E4D3A" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
+                <path d="M34 22 Q32 28 36 30" stroke="var(--c-dark)" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
+                <path d="M46 22 Q48 28 44 30" stroke="var(--c-dark)" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
               </svg>
               {/* 中间：少量 Floating Petals 点缀（不挡文字） */}
               <svg width="100%" height="100%" viewBox="0 0 100 100" fill="none" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" style={{ position:'absolute', left:0, top:0, opacity:0.28 }}>
                 <defs>
-                  <radialGradient id="alarm-petalA" cx="40%" cy="35%" r="60%"><stop offset="0%" stopColor="#E4D5B7"/><stop offset="100%" stopColor="#C08070" stopOpacity="0.5"/></radialGradient>
-                  <radialGradient id="alarm-petalB" cx="45%" cy="38%" r="58%"><stop offset="0%" stopColor="#C08070"/><stop offset="100%" stopColor="#9A6050" stopOpacity="0.4"/></radialGradient>
+                  <radialGradient id="alarm-petalA" cx="40%" cy="35%" r="60%"><stop offset="0%" stopColor="#E4D5B7"/><stop offset="100%" stopColor="var(--c-rosy)" stopOpacity="0.5"/></radialGradient>
+                  <radialGradient id="alarm-petalB" cx="45%" cy="38%" r="58%"><stop offset="0%" stopColor="var(--c-rosy)"/><stop offset="100%" stopColor="var(--c-roseDeep)" stopOpacity="0.4"/></radialGradient>
                 </defs>
                 <ellipse cx="22" cy="28" rx="6" ry="3.5" fill="url(#alarm-petalA)" transform="rotate(-25 22 28)"/>
                 <ellipse cx="78" cy="22" rx="5" ry="3" fill="url(#alarm-petalB)" transform="rotate(15 78 22)"/>
@@ -941,7 +993,7 @@ export default function App() {
               </svg>
             </div>
             {/* radial glow */}
-            <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 65% 55% at 50% 60%, rgba(192,128,112,0.1), transparent)', pointerEvents:'none' }}/>
+            <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 65% 55% at 50% 60%, color-mix(in srgb, var(--c-rosy) 10%, transparent), transparent)', pointerEvents:'none' }}/>
 
             <AnimatePresence mode="wait">
               {alarmStr ? (
@@ -978,15 +1030,15 @@ export default function App() {
                   <div style={{
                     display:'inline-flex', alignItems:'center', gap:6,
                     marginTop:2,
-                    background:'rgba(192,128,112,0.12)',
-                    border:'1px solid rgba(192,128,112,0.28)',
+                    background:'color-mix(in srgb, var(--c-rosy) 12%, transparent)',
+                    border:'1px solid color-mix(in srgb, var(--c-rosy) 28%, transparent)',
                     borderRadius:20, padding:'3px 12px',
                   }}>
                     <span style={{ fontSize:9, color:C.rosy, letterSpacing:'0.1em' }}>
                       {submitted}
                     </span>
-                    <span style={{ width:3, height:3, borderRadius:'50%', background:'rgba(192,128,112,0.45)', display:'inline-block' }}/>
-                    <span style={{ fontSize:9, color:'rgba(192,128,112,0.7)', letterSpacing:'0.06em' }}>
+                    <span style={{ width:3, height:3, borderRadius:'50%', background:'color-mix(in srgb, var(--c-rosy) 45%, transparent)', display:'inline-block' }}/>
+                    <span style={{ fontSize:9, color:'color-mix(in srgb, var(--c-rosy) 70%, transparent)', letterSpacing:'0.06em' }}>
                       departs {depStr}{flightLoading ? ' …' : ''}
                     </span>
                   </div>
@@ -1005,16 +1057,16 @@ export default function App() {
                       <defs>
                         <radialGradient id="bell_ph" cx="36%" cy="28%" r="68%">
                           <stop offset="0%"   stopColor="#E4D5B7"/>
-                          <stop offset="50%"  stopColor="#CEBF9E"/>
+                          <stop offset="50%"  stopColor="var(--c-roseLight)"/>
                           <stop offset="100%" stopColor="#A89070"/>
                         </radialGradient>
                       </defs>
                       <path d="M36 12 C24 12 18 22 18 32 L18 46 Q18 50 22 50 L50 50 Q54 50 54 46 L54 32 C54 22 48 12 36 12Z" fill="url(#bell_ph)"/>
-                      <circle cx="36" cy="54" r="4.5" fill="#C08070"/>
+                      <circle cx="36" cy="54" r="4.5" fill="var(--c-rosy)"/>
                       <path d="M30 12 Q36 6 42 12" stroke="#A89070" strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.8"/>
-                      <circle cx="36" cy="10" r="2.8" fill="#CEBF9E" opacity="0.75"/>
-                      <path d="M10 28 Q6 36 10 44"  stroke="#C08070" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
-                      <path d="M62 28 Q66 36 62 44" stroke="#C08070" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
+                      <circle cx="36" cy="10" r="2.8" fill="var(--c-roseLight)" opacity="0.75"/>
+                      <path d="M10 28 Q6 36 10 44"  stroke="var(--c-rosy)" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
+                      <path d="M62 28 Q66 36 62 44" stroke="var(--c-rosy)" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
                     </svg>
                   </div>
 
@@ -1027,7 +1079,7 @@ export default function App() {
 
                   {/* guiding hint */}
                   <div style={{
-                    fontSize:10, color:'rgba(122,146,104,0.55)',
+                    fontSize:10, color:'color-mix(in srgb, var(--c-moss) 55%, transparent)',
                     letterSpacing:'0.06em', lineHeight:1.5,
                   }}>
                     enter your flight number<br/>
@@ -1039,14 +1091,17 @@ export default function App() {
           </motion.div>
 
           {/* ── Timeline ── */}
-          <div style={{
+          <div
+            data-skin-card="1"
+            style={{
             flex:1, minHeight:0,
             background:'rgba(228,213,183,0.03)',
             backdropFilter:'blur(8px)',
             border:'1px solid rgba(228,213,183,0.08)',
             borderRadius:18,
-            padding:'8px 10px 6px',
+            padding:'8px 10px 10px',
             display:'flex', flexDirection:'column',
+            overflow:'hidden',
           }}>
             <div style={{
               display:'flex',
@@ -1087,13 +1142,13 @@ export default function App() {
               </button>
             </div>
 
-            <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
-              {NODES.map((node, index) => {
+            <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column', justifyContent:'space-between', gap:0, paddingBottom:4 }}>
+              {journeyNodes.map((node, index) => {
                 const time    = times?.[node.id];
                 const diff    = getDiff(node.id);
                 const stamped = stamps[node.id];
                 const isFirst = node.isFirst;
-                const isLast  = index === NODES.length - 1;
+                const isLast  = index === journeyNodes.length - 1;
                 const { Icon } = node;
                 const progress = getProgressData(node.id);
 
@@ -1106,7 +1161,9 @@ export default function App() {
                       style={{ display:'flex', alignItems:'center', gap:7 }}
                     >
                       {/* Custom icon — scaled down */}
-                      <div style={{
+                      <div
+                        className="journey-icon-tint"
+                        style={{
                         width:26, height:26, flexShrink:0,
                         display:'flex', alignItems:'center', justifyContent:'center',
                         overflow:'hidden',
@@ -1142,14 +1199,16 @@ export default function App() {
                               {diff && (
                                 <span style={{
                                   fontSize:10,
-                                  color: '#0B1515',
+                                  color: 'rgba(228,213,183,0.92)',
                                   letterSpacing:'0.08em',
                                   background: diff.color === C.moss
-                                    ? 'rgba(122,146,104,0.28)'
+                                    ? 'color-mix(in srgb, var(--c-moss) 50%, transparent)'
                                     : diff.color === C.rosy
-                                      ? 'rgba(192,128,112,0.32)'
-                                      : 'rgba(30,77,58,0.4)',
-                                  borderRadius:20, padding:'1px 6px',
+                                      ? 'color-mix(in srgb, var(--c-rosy) 52%, transparent)'
+                                      : 'color-mix(in srgb, var(--c-dark) 56%, transparent)',
+                                  border:'1px solid rgba(228,213,183,0.22)',
+                                  boxShadow:'inset 0 1px 0 rgba(255,255,255,0.08)',
+                                  borderRadius:20, padding:'1px 7px',
                                 }}>
                                   {diff.label}
                                 </span>
@@ -1169,10 +1228,10 @@ export default function App() {
                               onClick={() => { playNowSound(); stampNow(node.id); }}
                               style={{
                                 background:'transparent',
-                                border:'1px solid rgba(192,128,112,0.28)',
+                                border:'1px solid color-mix(in srgb, var(--c-rosy) 28%, transparent)',
                                 borderRadius:20,
                                 padding:'1px 14px',
-                                color:'rgba(192,128,112,0.65)',
+                                color:'color-mix(in srgb, var(--c-rosy) 65%, transparent)',
                                 fontSize:9,
                                 cursor:'pointer',
                                 letterSpacing:'0.08em',
@@ -1192,7 +1251,7 @@ export default function App() {
                             initial={{ opacity:0, scaleX:0.8 }}
                             animate={{ opacity:1, scaleX:1 }}
                             transition={{ duration:0.4, ease:[0.22,1,0.36,1] }}
-                            style={{ marginTop:5, position:'relative', height:4, borderRadius:2, background:'rgba(228,213,183,0.07)', transformOrigin:'left' }}
+                            style={{ marginTop:5, marginBottom: isLast ? 8 : 0, position:'relative', height:4, borderRadius:2, background:'rgba(228,213,183,0.07)', transformOrigin:'left' }}
                           >
                             {/* Fill to actual */}
                             <div style={{
@@ -1200,8 +1259,8 @@ export default function App() {
                               width:`${progress.aPct}%`,
                               borderRadius:2,
                               background: progress.isEarly
-                                ? 'linear-gradient(to right, rgba(122,146,104,0.25), rgba(122,146,104,0.55))'
-                                : 'linear-gradient(to right, rgba(192,128,112,0.25), rgba(192,128,112,0.55))',
+                                ? 'linear-gradient(to right, color-mix(in srgb, var(--c-moss) 25%, transparent), color-mix(in srgb, var(--c-moss) 55%, transparent))'
+                                : 'linear-gradient(to right, color-mix(in srgb, var(--c-rosy) 25%, transparent), color-mix(in srgb, var(--c-rosy) 55%, transparent))',
                             }}/>
                             {/* Expected marker (white tick) */}
                             <div style={{
@@ -1218,7 +1277,7 @@ export default function App() {
                               width:7, height:7, borderRadius:'50%',
                               background: progress.isEarly ? C.moss : C.rosy,
                               transform:'translate(-50%, -50%)',
-                              boxShadow:`0 0 5px ${progress.isEarly ? 'rgba(122,146,104,0.7)' : 'rgba(192,128,112,0.7)'}`,
+                              boxShadow:`0 0 5px ${progress.isEarly ? 'color-mix(in srgb, var(--c-moss) 70%, transparent)' : 'color-mix(in srgb, var(--c-rosy) 70%, transparent)'}`,
                             }}/>
                             {/* Start cap */}
                             <div style={{ position:'absolute', left:0, top:'50%', width:3, height:3, borderRadius:'50%', background:'rgba(228,213,183,0.22)', transform:'translateY(-50%)' }}/>
@@ -1254,11 +1313,11 @@ export default function App() {
                       <div style={{ display:'flex', alignItems:'center', height:8, marginLeft:13 }}>
                         <div style={{
                           width:1, height:'100%',
-                          background:'linear-gradient(to bottom, rgba(122,146,104,0.3), rgba(122,146,104,0.08))',
+                          background:'linear-gradient(to bottom, color-mix(in srgb, var(--c-moss) 30%, transparent), color-mix(in srgb, var(--c-moss) 8%, transparent))',
                         }}/>
                         <div style={{
                           width:4, height:4, borderRadius:'50%',
-                          background:'rgba(122,146,104,0.22)',
+                          background:'color-mix(in srgb, var(--c-moss) 22%, transparent)',
                           marginLeft:4, alignSelf:'center',
                         }}/>
                       </div>
@@ -1281,8 +1340,9 @@ export default function App() {
                 initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
                 onClick={() => setSettingsOpen(false)}
                 style={{
-                  position:'absolute', inset:0, zIndex:9,
+                  position:'fixed', inset:0, zIndex:50,
                   background:'rgba(5,15,15,0.6)', backdropFilter:'blur(4px)',
+                  WebkitBackdropFilter:'blur(4px)',
                 }}
               />
               <motion.div
@@ -1292,15 +1352,14 @@ export default function App() {
                 exit={{ y:'100%' }}
                 transition={{ type:'spring', damping:28, stiffness:300 }}
                 style={{
-                  position:'absolute', bottom:0, left:0, right:0, zIndex:10,
+                  position:'fixed', bottom:0, left:0, right:0, zIndex:51,
                   borderRadius:'24px 24px 0 0',
-                  background:[
-                    'radial-gradient(ellipse 80% 45% at 20% 0%, rgba(30,77,58,0.85) 0%, transparent 60%)',
-                    '#152A2A',
-                  ].join(', '),
+                  background:'linear-gradient(180deg, color-mix(in srgb, var(--c-bg-152A2A) 98%, transparent) 0%, color-mix(in srgb, var(--c-midnight) 98%, transparent) 100%)',
+                  backdropFilter:'blur(12px)',
+                  WebkitBackdropFilter:'blur(12px)',
                   border:'1px solid rgba(228,213,183,0.12)',
                   borderBottom:'none',
-                  padding:'16px 20px 40px',
+                  padding:'16px 20px calc(22px + env(safe-area-inset-bottom, 0px))',
                 }}
               >
                 {/* Handle */}
@@ -1314,7 +1373,7 @@ export default function App() {
                       fontStyle:'italic', fontWeight:300,
                       fontSize:22, color:C.beige, lineHeight:1.1,
                     }}>MY RITUAL</div>
-                    <div style={{ fontSize:10, color:C.moss, letterSpacing:'0.12em', marginTop:3 }}>your defaults, your pace.</div>
+                    <div style={{ fontSize:11, color:C.moss, letterSpacing:'0.12em', marginTop:3 }}>your defaults, your pace.</div>
                   </div>
                   <button
                     onClick={() => setSettingsOpen(false)}
@@ -1338,16 +1397,20 @@ export default function App() {
                     { key:'gate',    Icon:IconAtTheGate,      label:'At the Gate',    sub:'walk to gate'     },
                     { key:'board',   Icon:IconGetOnBoard,     label:'Get On Board',   sub:'before departure' },
                   ] as const
-                ).map((item, i) => (
+                )
+                  .filter(item => !(isPink && item.key === 'linger'))
+                  .map((item, i, arr) => (
                   <div
                     key={item.key}
                     style={{
                       display:'flex', alignItems:'center', gap:10,
-                      padding:'9px 0',
-                      borderBottom: i < 5 ? '1px solid rgba(228,213,183,0.06)' : 'none',
+                      padding:'10px 0',
+                      borderBottom: i < arr.length - 1 ? '1px solid rgba(228,213,183,0.06)' : 'none',
                     }}
                   >
-                    <div style={{
+                    <div
+                      className="journey-icon-tint"
+                      style={{
                       width:30, height:30, flexShrink:0,
                       display:'flex', alignItems:'center', justifyContent:'center',
                     }}>
@@ -1355,10 +1418,10 @@ export default function App() {
                     </div>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{
-                        fontSize:12, color:'rgba(228,213,183,0.85)', lineHeight:1.2,
+                        fontSize:13, color:'rgba(228,213,183,0.9)', lineHeight:1.2,
                         fontFamily:'"Cormorant Garamond", serif', fontStyle:'italic',
                       }}>{item.label}</div>
-                      <div style={{ fontSize:9, color:'rgba(122,146,104,0.75)', letterSpacing:'0.07em' }}>{item.sub}</div>
+                      <div style={{ fontSize:10, color:'color-mix(in srgb, var(--c-moss) 78%, transparent)', letterSpacing:'0.07em' }}>{item.sub}</div>
                     </div>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <button
@@ -1419,7 +1482,7 @@ export default function App() {
                 style={{
                   position: 'absolute', left: 20, right: 20, top: '50%',
                   transform: 'translateY(-50%)', zIndex: 12,
-                  background: 'linear-gradient(180deg, rgba(21,42,42,0.98) 0%, rgba(13,43,43,0.98) 100%)',
+                  background: 'linear-gradient(180deg, color-mix(in srgb, var(--c-bg-152A2A) 98%, transparent) 0%, color-mix(in srgb, var(--c-midnight) 98%, transparent) 100%)',
                   border: '1px solid rgba(228,213,183,0.14)',
                   borderRadius: 20,
                   padding: '20px 20px 24px',
@@ -1445,7 +1508,7 @@ export default function App() {
                     style={{
                       width: 72, height: 72, borderRadius: '50%',
                       border: '1px solid rgba(228,213,183,0.2)',
-                      background: 'rgba(30,77,58,0.3)',
+                      background: 'color-mix(in srgb, var(--c-dark) 30%, transparent)',
                       overflow: 'hidden', padding: 0, cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
@@ -1474,7 +1537,7 @@ export default function App() {
                     onClick={saveProfileEdit}
                     style={{
                       width: '100%', padding: '10px',
-                      background: 'rgba(192,128,112,0.25)', border: '1px solid rgba(192,128,112,0.4)',
+                      background: 'color-mix(in srgb, var(--c-rosy) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--c-rosy) 40%, transparent)',
                       borderRadius: 10, color: C.rosy, fontSize: 11, letterSpacing: '0.1em',
                       cursor: 'pointer', fontFamily: "'Jost', sans-serif",
                     }}
