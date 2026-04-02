@@ -312,3 +312,23 @@ body {
     line-height: 1.35;
   }
 }
+
+/* MY RITUAL drawer — Restore 文字链接（与时长粉字同系，随主题 --c-rosy） */
+.ritual-restore-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: color-mix(in srgb, var(--c-rosy) 58%, transparent);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: 'Jost', system-ui, sans-serif;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ritual-restore-link:hover {
+  color: var(--c-rosy);
+}

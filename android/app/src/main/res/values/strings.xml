@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ChronoFly</string>
+    <string name="title_activity_main">ChronoFly</string>
+    <string name="package_name">com.suzinotsuzie.chronofly</string>
+    <string name="custom_url_scheme">com.suzinotsuzie.chronofly</string>
+</resources>

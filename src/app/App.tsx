@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, X, ChevronDown, CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Settings, Settings2, X, ChevronDown, CalendarIcon, ChevronLeft, ChevronRight, History } from 'lucide-react';
 import { DayPicker, CaptionLabel } from 'react-day-picker';
 import { format, parse, addMonths } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import type { CaptionProps } from 'react-day-picker';
+import { syncAlarmToDevice } from './localAlarm';
 
 function parseFlightDate(ymd: string): Date {
   try {
@@ -148,7 +149,41 @@ const MOCK_FLIGHTS: Record<string, string> = {
 
 // ── Local storage keys ────────────────────────────────────────────────────
 const FLIGHT_STATE_KEY = 'chrono_flight_state_v1';
+const FLIGHT_HISTORY_KEY = 'chrono_flight_history_v1';
 const SKIN_KEY = 'chrono_skin_v1';
+
+/** 仅展示字段；完整打卡 The Journey 后写入 */
+type FlightHistoryEntry = {
+  id: string;
+  flightNo: string;
+  flightDate: string;
+  origin: string;
+  dest: string;
+  depTime: string;
+  comfortTag: string;
+  savedAt: number;
+};
+
+function loadFlightHistory(): FlightHistoryEntry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(FLIGHT_HISTORY_KEY);
+    if (!raw) return [];
+    const p = JSON.parse(raw) as unknown;
+    if (!Array.isArray(p)) return [];
+    return p
+      .filter(
+        (e): e is FlightHistoryEntry =>
+          e &&
+          typeof e === 'object' &&
+          typeof (e as FlightHistoryEntry).flightNo === 'string' &&
+          typeof (e as FlightHistoryEntry).comfortTag === 'string',
+      )
+      .slice(0, 80);
+  } catch {
+    return [];
+  }
+}
 
 function mockDeparture(flightNo: string): string {
   const key = flightNo.toUpperCase().trim();
@@ -174,24 +209,58 @@ function nowStr(): string {
   return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────
-type Durations = { linger: number; polish: number; rollout: number; clear: number; gate: number; board: number };
-const DEFAULT_DURATIONS: Durations = {
-  linger: 20, polish: 30, rollout: 30, clear: 20, gate: 15, board: 20,
-};
-
-function calcTimes(depStr: string, d: Durations): Record<string, number> {
-  const dep     = toMin(depStr);
-  // 规则：相邻节点时间差 = My Ritual 对应配置时长（依次类推）
-  const board   = dep;
-  const gate    = board    - d.board;
-  const clear   = gate     - d.gate;
-  const rollout = clear    - d.clear;
-  const polish  = rollout  - d.rollout;
-  const linger  = polish   - d.polish;
-  const wake    = linger   - d.linger;
-  return { wake, linger, polish, rollout, clear, gate, board };
+/** 各节点 |实际 − 计划| 的平均值（分钟）→ 可爱英文舒适档 */
+function comfortTagFromMeanAbs(meanAbs: number): string {
+  if (meanAbs <= 2) return 'Snug bunny';
+  if (meanAbs <= 5) return 'Cloud slippers';
+  if (meanAbs <= 9) return 'Cozy wobble';
+  if (meanAbs <= 15) return 'Busy bee';
+  return 'Chaos cupcake';
 }
+
+function computeMeanAbsDiff(
+  nodeIds: string[],
+  stamps: Record<string, string>,
+  times: Record<string, number>,
+): number {
+  const wakeMin = times.wake;
+  let sum = 0;
+  let n = 0;
+  for (const id of nodeIds) {
+    const exp = times[id];
+    if (exp === undefined) continue;
+    const st = stamps[id];
+    if (!st) continue;
+    let actual = toMin(st);
+    if (actual < wakeMin - 60) actual += 1440;
+    const diff = actual - exp;
+    sum += Math.abs(diff);
+    n += 1;
+  }
+  return n > 0 ? sum / n : 0;
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────
+type Durations = {
+  linger: number;
+  polish: number;
+  rollout: number;
+  checkin: number;
+  clear: number;
+  gate: number;
+  zen: number;
+  wheels: number;
+};
+const DEFAULT_DURATIONS: Durations = {
+  linger: 20,
+  polish: 20,
+  rollout: 30,
+  checkin: 15,
+  clear: 20,
+  gate: 20,
+  zen: 10,
+  wheels: 30,
+};
 
 // ── Custom SVG Icons ──────────────────────────────────────────────────────
 const IconRingRing = () => (
@@ -307,6 +376,32 @@ const IconTerminalEntry = () => (
   </svg>
 );
 
+const IconCheckInComplete = () => (
+  <svg width="32" height="32" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="chkBagG" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="var(--c-rosy)" stopOpacity="0.82"/>
+        <stop offset="100%" stopColor="var(--c-roseDeep)" stopOpacity="0.92"/>
+      </linearGradient>
+      <linearGradient id="chkPassG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#E4D5B7" stopOpacity="0.95"/>
+        <stop offset="100%" stopColor="var(--c-moss)" stopOpacity="0.4"/>
+      </linearGradient>
+    </defs>
+    <rect x="8" y="24" width="20" height="30" rx="3" fill="url(#chkBagG)" opacity="0.92"/>
+    <path d="M11 28 h14 M11 34 h14" stroke="var(--c-midnight)" strokeWidth="0.9" opacity="0.28"/>
+    <rect x="10" y="44" width="16" height="2.5" rx="1" fill="var(--c-midnight)" opacity="0.32"/>
+    <circle cx="18" cy="52" r="2.8" fill="var(--c-dark)" opacity="0.7"/>
+    <rect x="32" y="18" width="32" height="36" rx="5" fill="url(#chkPassG)" stroke="var(--c-rosy)" strokeWidth="1" opacity="0.92"/>
+    <path d="M38 26 h20 M38 32 h14" stroke="var(--c-dark)" strokeWidth="0.9" opacity="0.32"/>
+    <rect x="40" y="38" width="16" height="10" rx="2" fill="var(--c-moss)" opacity="0.42"/>
+    <path d="M43 43 h10" stroke="#E4D5B7" strokeWidth="1.2" strokeLinecap="round" opacity="0.75"/>
+    <path d="M48 40 v10" stroke="#E4D5B7" strokeWidth="0.9" opacity="0.45"/>
+    <ellipse cx="16" cy="62" rx="7" ry="2.4" fill="var(--c-moss)" opacity="0.42"/>
+    <ellipse cx="52" cy="60" rx="6" ry="2.1" fill="var(--c-dark)" opacity="0.42"/>
+  </svg>
+);
+
 const IconPastSecurity = () => (
   <svg width="32" height="32" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -376,18 +471,85 @@ const IconGetOnBoard = () => (
   </svg>
 );
 
+/** 预计起飞时刻（跑道 / 离地意象）；纯色填充避免与抽屉内重复实例的 gradient id 冲突 */
+const IconDepartureTime = () => (
+  <svg width="32" height="32" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 58 h64" stroke="var(--c-moss)" strokeWidth="2" strokeLinecap="round" opacity="0.45"/>
+    <path d="M8 58 L14 52" stroke="var(--c-dark)" strokeWidth="1.2" opacity="0.35"/>
+    <path d="M22 58 L28 50" stroke="var(--c-dark)" strokeWidth="1.2" opacity="0.35"/>
+    <circle cx="58" cy="14" r="8" fill="var(--c-rosy)" opacity="0.35"/>
+    <circle cx="58" cy="14" r="5" fill="#E4D5B7" opacity="0.55"/>
+    <path
+      d="M18 46 L38 38 L62 28 L66 30 L52 42 L30 50 Z"
+      fill="color-mix(in srgb, var(--c-mint) 55%, #E4D5B7)"
+      opacity="0.92"
+    />
+    <path d="M62 28 L70 26 L66 32 Z" fill="var(--c-rosy)" opacity="0.75"/>
+    <ellipse cx="14" cy="62" rx="8" ry="2.6" fill="var(--c-moss)" opacity="0.38"/>
+    <ellipse cx="48" cy="64" rx="6" ry="2.2" fill="var(--c-dark)" opacity="0.35"/>
+  </svg>
+);
+
 // ── Node definitions ───────────────────────────────────────────────────────
 const NODES = [
-  { id: 'wake',    Icon: IconRingRing,      label: 'Ring Ring',       sub: 'Alarm rings',       cardClass: 'card-1', isFirst: true  },
-  { id: 'linger',  Icon: IconWakeyWakey,    label: 'Wakey Wakey',     sub: 'Rise & ease in',    cardClass: 'card-2', isFirst: false },
-  { id: 'polish',  Icon: IconLeavingHome,   label: 'Leaving Home',    sub: 'Wash up & pack',    cardClass: 'card-3', isFirst: false },
-  { id: 'rollout', Icon: IconTerminalEntry, label: 'Terminal Entry',  sub: 'Drive to airport',  cardClass: 'card-4', isFirst: false },
-  { id: 'clear',   Icon: IconPastSecurity,  label: 'Cleared Security', sub: 'Security check',    cardClass: 'card-5', isFirst: false },
-  { id: 'gate',    Icon: IconAtTheGate,     label: 'At the Gate',     sub: 'Walk to gate',      cardClass: 'card-6', isFirst: false },
-  { id: 'board',   Icon: IconGetOnBoard,    label: 'Get On Board',    sub: 'Boarding begins',   cardClass: 'card-7', isFirst: false },
+  { id: 'wake',    Icon: IconRingRing,        label: 'Ring Ring',          sub: 'Alarm rings',                     cardClass: 'card-1', isFirst: true  },
+  { id: 'linger',  Icon: IconWakeyWakey,      label: 'Wakey Wakey',        sub: 'one last dream',                  cardClass: 'card-2', isFirst: false },
+  { id: 'polish',  Icon: IconLeavingHome,     label: 'Leaving Home',       sub: 'wash, pack, & glow',             cardClass: 'card-3', isFirst: false },
+  { id: 'rollout', Icon: IconTerminalEntry,   label: 'Terminal Entry',     sub: 'heading to the airport',        cardClass: 'card-4', isFirst: false },
+  { id: 'checkin', Icon: IconCheckInComplete, label: 'Check-in Complete',  sub: 'tags, bags, and boarding passes', cardClass: 'card-5', isFirst: false },
+  { id: 'clear',   Icon: IconPastSecurity,    label: 'Cleared Security',   sub: 'belt off, shoes off',           cardClass: 'card-6', isFirst: false },
+  { id: 'gate',    Icon: IconAtTheGate,       label: 'At the Gate',        sub: 'wandering to the gate',         cardClass: 'card-7', isFirst: false },
+  { id: 'zen',     Icon: IconGetOnBoard,      label: 'Now Boarding',       sub: 'zen time before boarding',      cardClass: 'card-8', isFirst: false },
 ];
 
 type DurKey = keyof Durations;
+
+/** 与一级时间轴 / 计算顺序一致（不含 Ring Ring） */
+const RITUAL_ORDER: DurKey[] = ['linger', 'polish', 'rollout', 'checkin', 'clear', 'gate', 'zen', 'wheels'];
+
+function isDurKey(k: unknown): k is DurKey {
+  return typeof k === 'string' && (RITUAL_ORDER as readonly string[]).includes(k);
+}
+
+/** 跳过环节时不计入总时长；各节点时刻为「完成该段之后」的累计时间 */
+function calcTimes(depStr: string, d: Durations, skipped: ReadonlySet<DurKey>): Record<string, number> {
+  const dep = toMin(depStr);
+  let total = 0;
+  for (const k of RITUAL_ORDER) {
+    if (!skipped.has(k)) total += d[k];
+  }
+  let t = dep - total;
+  const times: Record<string, number> = { wake: t, board: dep };
+  for (const k of RITUAL_ORDER) {
+    if (skipped.has(k)) continue;
+    t += d[k];
+    if (k !== 'wheels') times[k] = t;
+  }
+  return times;
+}
+
+/** 一级时间轴最后一个可打卡节点（不含 wake） */
+function getLastVisibleJourneyId(skipped: ReadonlySet<DurKey>, isPink: boolean): string {
+  for (let i = NODES.length - 1; i >= 0; i--) {
+    const n = NODES[i];
+    if (n.id === 'wake') continue;
+    if (isPink && n.id === 'linger') continue;
+    if (skipped.has(n.id as DurKey)) continue;
+    return n.id;
+  }
+  return 'wake';
+}
+
+const RITUAL_ROWS: { key: DurKey; sub: string }[] = [
+  { key: 'linger', sub: 'one last dream' },
+  { key: 'polish', sub: 'wash, pack, & glow' },
+  { key: 'rollout', sub: 'heading to the airport' },
+  { key: 'checkin', sub: 'tags, bags, and boarding passes' },
+  { key: 'clear', sub: 'belt off, shoes off' },
+  { key: 'gate', sub: 'wandering to the gate' },
+  { key: 'zen', sub: 'zen time before boarding' },
+  { key: 'wheels', sub: 'from boarding to wheels up' },
+];
 
 // ── Main Component ────────────────────────────────────────────────────────
 export default function App() {
@@ -395,7 +557,14 @@ export default function App() {
   const [submitted, setSubmitted]       = useState('');
   const [durations, setDurations]       = useState<Durations>(DEFAULT_DURATIONS);
   const [stamps, setStamps]             = useState<Record<string, string>>({});
+  /** 手动隐藏的 ritual 段：不计入总时长、一级不展示对应节点；新航班提交时清空 */
+  const [ritualSkipped, setRitualSkipped] = useState<DurKey[]>([]);
+  const skippedSet = useMemo(() => new Set(ritualSkipped), [ritualSkipped]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [flightHistory, setFlightHistory] = useState<FlightHistoryEntry[]>(loadFlightHistory);
+  const [flightOrigin, setFlightOrigin] = useState('');
+  const [flightDest, setFlightDest] = useState('');
   const [revealed, setRevealed]         = useState(false);
   const [goShakeKey, setGoShakeKey]     = useState(0);
   const [skin, setSkin]                 = useState<'theme-green' | 'theme-pink'>('theme-green');
@@ -404,8 +573,13 @@ export default function App() {
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [profileEditName, setProfileEditName] = useState('');
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  /** 早起/非早起开关：记录触点用于滑动切换 */
+  const riseModeSwitchPtr = useRef<{ startX: number } | null>(null);
+  /** 避免同一套打卡重复写入历史 */
+  const journeyHistorySigRef = useRef<string>('');
   const [flightDepStr, setFlightDepStr] = useState<string | null>(null);
   const [flightLoading, setFlightLoading] = useState(false);
+  const [alarmSyncHint, setAlarmSyncHint] = useState('');
   const [flightDate, setFlightDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -438,20 +612,34 @@ export default function App() {
         submitted?: string;
         flightDate?: string;
         stamps?: Record<string, string>;
+        ritualSkipped?: unknown;
       };
       if (!data.submitted || !data.flightDate) return;
       // 仅在航班当天恢复
       const now = new Date();
       const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       if (data.flightDate !== todayYmd) return;
-      // 如果最后一个节点已打卡，则视为完成，不再恢复
-      const done = data.stamps && data.stamps['board'];
+      let pinkRestore = false;
+      try {
+        pinkRestore = localStorage.getItem(SKIN_KEY) === 'theme-pink';
+      } catch {
+        // ignore
+      }
+      const skippedRestore = new Set(
+        Array.isArray(data.ritualSkipped) ? data.ritualSkipped.filter(isDurKey) : [],
+      );
+      const lastMilestone = getLastVisibleJourneyId(skippedRestore, pinkRestore);
+      // 旧版曾可打卡 Departure Time（board）；新版以当前最后一档可见节点为准
+      const done =
+        data.stamps &&
+        (data.stamps['board'] || (lastMilestone ? !!data.stamps[lastMilestone] : false));
       if (done) return;
 
       setFlightDate(data.flightDate);
       setFlightNo(data.flightNo || data.submitted);
       setSubmitted(data.submitted);
       setStamps(data.stamps ?? {});
+      setRitualSkipped(Array.isArray(data.ritualSkipped) ? data.ritualSkipped.filter(isDurKey) : []);
       setRevealed(true);
       setFlightDepStr(mockDeparture(data.submitted));
     } catch {
@@ -495,12 +683,13 @@ export default function App() {
         submitted,
         flightDate,
         stamps,
+        ritualSkipped,
       };
       localStorage.setItem(FLIGHT_STATE_KEY, JSON.stringify(payload));
     } catch {
       // ignore quota errors
     }
-  }, [flightNo, submitted, flightDate, stamps]);
+  }, [flightNo, submitted, flightDate, stamps, ritualSkipped]);
   useEffect(() => {
     if (!datePickerOpen) return;
     const close = (e: MouseEvent) => {
@@ -569,10 +758,102 @@ export default function App() {
   const isPink = skin === 'theme-pink';
 
   const depStr   = submitted ? (flightDepStr ?? mockDeparture(submitted)) : null;
-  const times    = depStr   ? calcTimes(depStr, durations) : null;
+  const times    = depStr   ? calcTimes(depStr, durations, skippedSet) : null;
   const alarmStr = times    ? toStr(times.wake) : null;
 
-  const journeyNodes = isPink ? NODES.filter(n => n.id !== 'linger') : NODES;
+  const journeyNodes = useMemo(
+    () =>
+      NODES.filter((n) => {
+        if (n.id === 'wake') return true;
+        if (isPink && n.id === 'linger') return false;
+        if (skippedSet.has(n.id as DurKey)) return false;
+        return true;
+      }),
+    [isPink, skippedSet],
+  );
+  const journeyNodeIds = useMemo(() => journeyNodes.map((n) => n.id), [journeyNodes]);
+
+  useEffect(() => {
+    if (!submitted || !alarmStr) return;
+    let cancelled = false;
+    (async () => {
+      const ret = await syncAlarmToDevice({
+        flightDate,
+        alarmHHMM: alarmStr,
+        flightNo: submitted,
+      });
+      if (cancelled) return;
+      if (ret.ok) {
+        setAlarmSyncHint('alarm synced to device');
+      } else if (ret.reason === 'permission_denied') {
+        setAlarmSyncHint('notification permission required');
+      } else {
+        setAlarmSyncHint('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [submitted, alarmStr, flightDate]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(FLIGHT_HISTORY_KEY, JSON.stringify(flightHistory));
+    } catch {
+      // ignore quota
+    }
+  }, [flightHistory]);
+
+  /** The Journey 每一档都点了 now 后写入一条历史（舒适标签 = 各节点 |实际−计划| 的平均分钟数分档） */
+  useEffect(() => {
+    if (!submitted || !flightDate || !depStr || !times) return;
+    const ids = journeyNodeIds;
+    const complete = ids.every((id) => stamps[id]);
+    if (!complete) {
+      journeyHistorySigRef.current = '';
+      return;
+    }
+    const sig = ids.map((id) => `${id}:${stamps[id]}`).join('|');
+    if (journeyHistorySigRef.current === sig) return;
+    journeyHistorySigRef.current = sig;
+
+    const meanAbs = computeMeanAbsDiff(ids, stamps, times);
+    const tag = comfortTagFromMeanAbs(meanAbs);
+    const entry: FlightHistoryEntry = {
+      id: `${submitted}_${flightDate}_${Date.now()}`,
+      flightNo: submitted,
+      flightDate,
+      origin: flightOrigin.trim() || '—',
+      dest: flightDest.trim() || '—',
+      depTime: depStr,
+      comfortTag: tag,
+      savedAt: Date.now(),
+    };
+    setFlightHistory((prev) =>
+      [entry, ...prev.filter((e) => !(e.flightNo === submitted && e.flightDate === flightDate))].slice(0, 50),
+    );
+  }, [stamps, submitted, flightDate, depStr, times, journeyNodeIds, flightOrigin, flightDest]);
+
+  /** API 晚于打卡返回时，补全日志里的起降地 */
+  useEffect(() => {
+    if (!submitted || !flightDate) return;
+    const o = flightOrigin.trim();
+    const d = flightDest.trim();
+    if (!o && !d) return;
+    setFlightHistory((prev) => {
+      let changed = false;
+      const next = prev.map((e) => {
+        if (e.flightNo !== submitted || e.flightDate !== flightDate) return e;
+        const no = o || e.origin;
+        const nd = d || e.dest;
+        if (no === e.origin && nd === e.dest) return e;
+        changed = true;
+        return { ...e, origin: no, dest: nd };
+      });
+      return changed ? next : prev;
+    });
+  }, [flightOrigin, flightDest, submitted, flightDate]);
 
   const submit = () => {
     const val = flightNo.trim().toUpperCase();
@@ -583,25 +864,43 @@ export default function App() {
     setRevealed(false);
     setTimeout(() => setRevealed(true), 80);
     setStamps({});
+    setRitualSkipped([]);
+    journeyHistorySigRef.current = '';
+    setFlightOrigin('');
+    setFlightDest('');
     const mock = mockDeparture(val);
     setFlightDepStr(mock);
     setFlightLoading(true);
     fetch(`/api/flight?flightNo=${encodeURIComponent(val)}&flight_date=${encodeURIComponent(flightDate)}`)
       .then((r) => r.json())
-      .then((json: { data?: Array<{ departure?: { scheduled?: string } }> }) => {
-        const scheduled = json?.data?.[0]?.departure?.scheduled;
-        if (scheduled && typeof scheduled === 'string') {
-          const d = new Date(scheduled);
-          if (!Number.isNaN(d.getTime())) {
-            const h = d.getHours();
-            const m = d.getMinutes();
-            setFlightDepStr(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-          } else {
-            const match = scheduled.match(/T(\d{2}):(\d{2})/);
-            if (match) setFlightDepStr(`${match[1]}:${match[2]}`);
+      .then(
+        (json: {
+          data?: Array<{
+            departure?: { scheduled?: string; iata?: string; airport?: string };
+            arrival?: { iata?: string; airport?: string };
+          }>;
+        }) => {
+          const row = json?.data?.[0];
+          const scheduled = row?.departure?.scheduled;
+          if (scheduled && typeof scheduled === 'string') {
+            const d = new Date(scheduled);
+            if (!Number.isNaN(d.getTime())) {
+              const h = d.getHours();
+              const m = d.getMinutes();
+              setFlightDepStr(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+            } else {
+              const match = scheduled.match(/T(\d{2}):(\d{2})/);
+              if (match) setFlightDepStr(`${match[1]}:${match[2]}`);
+            }
           }
-        }
-      })
+          if (row) {
+            const o = row.departure?.iata || row.departure?.airport || '';
+            const dest = row.arrival?.iata || row.arrival?.airport || '';
+            setFlightOrigin(o.trim() || '—');
+            setFlightDest(dest.trim() || '—');
+          }
+        },
+      )
       .catch(() => {})
       .finally(() => setFlightLoading(false));
   };
@@ -615,7 +914,7 @@ export default function App() {
   };
 
   const getDiff = (id: string) => {
-    if (!times || !stamps[id]) return null;
+    if (!times || !stamps[id] || times[id] === undefined) return null;
     const diff = toMin(stamps[id]) - times[id];
     if (Math.abs(diff) < 2) return { label: 'on time', color: C.moss };
     if (diff > 0)            return { label: `+${diff}m`, color: C.rosy };
@@ -630,6 +929,7 @@ export default function App() {
     const span = boardMin - wakeMin;
     if (span <= 0) return null;
     const expectedMin = times[nodeId];
+    if (expectedMin === undefined) return null;
     const rawActual   = toMin(stamps[nodeId]);
     // Handle midnight wrap
     const actualMin = rawActual < wakeMin - 60 ? rawActual + 1440 : rawActual;
@@ -642,9 +942,20 @@ export default function App() {
     setDurations(prev => ({ ...prev, [key]: Math.max(5, Math.min(120, prev[key] + delta)) }));
   };
 
+  const toggleRitualSkip = (key: DurKey) => {
+    setRitualSkipped((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+    if (key !== 'wheels') {
+      setStamps((s) => {
+        const n = { ...s };
+        delete n[key];
+        return n;
+      });
+    }
+  };
+
   // 点击“背景空白区域”切换皮肤：只要点击目标不在任何卡片模块内，就在 theme-green/theme-pink 间切换
   const onBgClickToggleSkin = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (settingsOpen || profileEditOpen || datePickerOpen) return;
+    if (settingsOpen || profileEditOpen || datePickerOpen || historyOpen) return;
     const target = e.target as HTMLElement | null;
     if (!target) return;
     // 仅当点击“不属于任何半透明模块”时切换皮肤
@@ -713,14 +1024,250 @@ export default function App() {
           gap:5,
         }}>
 
-          {/* ── Header ── */}
-          <div style={{ textAlign:'center', flexShrink:0, marginBottom:4 }}>
-            <div style={{
-              fontFamily:'"Cormorant Garamond", Georgia, serif',
-              fontStyle:'italic', fontWeight:300,
-              fontSize:26, color:C.beige,
-              letterSpacing:'0.08em', lineHeight:1.05,
-            }}>{userName}, Décollage</div>
+          {/* ── Title + Early / Snooze + Log 同一行 ── */}
+          <div
+            data-skin-card="1"
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              padding: '8px 12px',
+              background: 'rgba(228,213,183,0.05)',
+              border: '1px solid rgba(228,213,183,0.11)',
+              borderRadius: 14,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              <button
+                type="button"
+                onClick={openProfileEdit}
+                style={{
+                  width: 34,
+                  height: 34,
+                  flexShrink: 0,
+                  borderRadius: '50%',
+                  border: '1px solid rgba(228,213,183,0.14)',
+                  background: 'transparent',
+                  overflow: 'hidden',
+                  padding: 0,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                aria-label="Edit profile"
+              >
+                <img
+                  src={userAvatar || DEFAULT_AVATAR_URL}
+                  alt=""
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                />
+              </button>
+            <div
+              style={{
+                flex: 1,
+                minWidth: 0,
+                paddingRight: 4,
+              }}
+              aria-label={`${userName}'s Fly`}
+            >
+              <span
+                style={{
+                  fontFamily: '"Cormorant Garamond", Georgia, serif',
+                  fontStyle: 'italic',
+                  fontWeight: 400,
+                  fontSize: 19,
+                  color: C.beige,
+                  letterSpacing: '0.02em',
+                  lineHeight: 1.15,
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-block',
+                    maxWidth: '9rem',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    verticalAlign: 'baseline',
+                  }}
+                >
+                  {userName}
+                </span>
+                <span
+                  style={{
+                    color: 'color-mix(in srgb, var(--c-beige) 88%, var(--c-moss) 12%)',
+                  }}
+                >
+                  {'\u2019'}s{'\u00a0'}
+                </span>
+                <span
+                  style={{
+                    fontWeight: 500,
+                    color: C.rosy,
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  Fly
+                </span>
+              </span>
+            </div>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                flexShrink: 0,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  fontFamily: "'Jost', sans-serif",
+                  color: !isPink
+                    ? C.beige
+                    : 'color-mix(in srgb, var(--c-moss) 52%, transparent)',
+                  opacity: !isPink ? 1 : 0.62,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Early
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!isPink}
+                aria-label={
+                  isPink
+                    ? 'Late mode: tap or slide to Early rise (includes one last dream)'
+                    : 'Early rise: tap or slide to Late mode'
+                }
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSkin((prev) => (prev === 'theme-pink' ? 'theme-green' : 'theme-pink'));
+                  }
+                }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  riseModeSwitchPtr.current = { startX: e.clientX };
+                  (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+                }}
+                onPointerUp={(e) => {
+                  e.stopPropagation();
+                  const start = riseModeSwitchPtr.current;
+                  riseModeSwitchPtr.current = null;
+                  try {
+                    (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
+                  } catch {
+                    /* released */
+                  }
+                  if (!start) return;
+                  const dx = e.clientX - start.x;
+                  if (Math.abs(dx) > 14) {
+                    setSkin(dx > 0 ? 'theme-pink' : 'theme-green');
+                  } else {
+                    setSkin((prev) => (prev === 'theme-pink' ? 'theme-green' : 'theme-pink'));
+                  }
+                }}
+                onPointerCancel={() => {
+                  riseModeSwitchPtr.current = null;
+                }}
+                style={{
+                  position: 'relative',
+                  width: 42,
+                  height: 20,
+                  boxSizing: 'border-box',
+                  borderRadius: 999,
+                  flexShrink: 0,
+                  border: '1px solid rgba(228,213,183,0.1)',
+                  background: isPink
+                    ? 'color-mix(in srgb, var(--c-rosy) 25%, transparent)'
+                    : 'color-mix(in srgb, var(--c-moss) 32%, transparent)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  touchAction: 'none',
+                }}
+              >
+                <motion.div
+                  transition={{ type: 'spring', stiffness: 480, damping: 34 }}
+                  animate={{ x: isPink ? 24 : 2 }}
+                  style={{
+                    position: 'absolute',
+                    top: 2,
+                    left: 0,
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    background: '#E4D5B7',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.22)',
+                    pointerEvents: 'none',
+                  }}
+                />
+              </button>
+              <span
+                style={{
+                  fontSize: 9,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  fontFamily: "'Jost', sans-serif",
+                  color: isPink
+                    ? C.beige
+                    : 'color-mix(in srgb, var(--c-moss) 52%, transparent)',
+                  opacity: isPink ? 1 : 0.62,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                LATE
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              aria-label="Open flight log"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                height: 20,
+                boxSizing: 'border-box',
+                padding: '0 8px',
+                borderRadius: 999,
+                border: '1px solid rgba(228,213,183,0.1)',
+                background: 'rgba(10,20,20,0.35)',
+                color: 'rgba(228,213,183,0.88)',
+                fontSize: 9,
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                fontFamily: "'Jost', sans-serif",
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              <History size={11} strokeWidth={1.5} />
+              Log
+            </button>
           </div>
 
           {/* ── Flight input ── */}
@@ -742,31 +1289,8 @@ export default function App() {
             border:'1px solid rgba(228,213,183,0.13)',
             borderRadius:16,
             padding:'8px 14px',
-            display:'flex', alignItems:'center', gap:10,
+            display:'flex', alignItems:'center', gap:12,
           }}>
-            <button
-              type="button"
-              onClick={openProfileEdit}
-              style={{
-                width:32, height:32, flexShrink:0,
-                borderRadius:'50%',
-                border:'1px solid rgba(228,213,183,0.12)',
-                background: 'transparent',
-                overflow:'hidden',
-                padding:0,
-                cursor:'pointer',
-                display:'flex', alignItems:'center', justifyContent:'center',
-              }}
-              aria-label="Edit profile"
-            >
-              <img
-                src={userAvatar || DEFAULT_AVATAR_URL}
-                alt=""
-                style={{
-                  width:'100%', height:'100%', objectFit:'cover',
-                }}
-              />
-            </button>
             <div style={{ flex:1, minWidth:0, display:'flex', alignItems:'stretch', gap:12 }}>
               <div style={{ display:'flex', flexDirection:'column', gap:2, position:'relative' }} ref={dateColumnRef}>
                 <div style={{ fontSize:8, color:C.moss, letterSpacing:'0.2em', textTransform:'uppercase' }}>Date</div>
@@ -1016,6 +1540,11 @@ export default function App() {
                   }}>
                     set your alarm to this time
                   </div>
+                  {alarmSyncHint && (
+                    <div style={{ fontSize:9, color:'color-mix(in srgb, var(--c-beige) 72%, transparent)', letterSpacing:'0.06em' }}>
+                      {alarmSyncHint}
+                    </div>
+                  )}
 
                   {/* big time */}
                   <div style={{
@@ -1083,7 +1612,9 @@ export default function App() {
                     letterSpacing:'0.06em', lineHeight:1.5,
                   }}>
                     enter your flight number<br/>
-                    <span style={{ opacity:0.7 }}>to see your wake alarm</span>
+                    <span style={{ opacity:0.7 }}>
+                      {isPink ? 'to see your alarm' : 'to see your wake alarm'}
+                    </span>
                   </div>
                 </motion.div>
               )}
@@ -1359,102 +1890,423 @@ export default function App() {
                   WebkitBackdropFilter:'blur(12px)',
                   border:'1px solid rgba(228,213,183,0.12)',
                   borderBottom:'none',
-                  padding:'16px 20px calc(22px + env(safe-area-inset-bottom, 0px))',
+                  padding:'0 20px calc(22px + env(safe-area-inset-bottom, 0px))',
+                  overflow:'hidden',
                 }}
               >
-                {/* Handle */}
-                <div style={{ width:36, height:4, borderRadius:2, background:'rgba(228,213,183,0.18)', margin:'0 auto 14px' }}/>
+                <div style={{ position:'relative', zIndex:1, paddingTop:16 }}>
+                  {/* Handle */}
+                  <div style={{ width:36, height:4, borderRadius:2, background:'rgba(228,213,183,0.18)', margin:'0 auto 14px' }}/>
 
-                {/* Header */}
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
+                  {/* Header */}
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
+                    <div>
+                      <div style={{
+                        fontFamily:'Georgia, "Cormorant Garamond", serif',
+                        fontStyle:'italic',
+                        fontWeight:400,
+                        fontSize:22,
+                        color:C.beige,
+                        lineHeight:1.15,
+                      }}>MY RITUAL</div>
+                      <div style={{ fontSize:11, color:C.moss, letterSpacing:'0.12em', marginTop:4 }}>your defaults, your pace.</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsOpen(false)}
+                      style={{
+                        background:'rgba(228,213,183,0.07)',
+                        border:'1px solid rgba(228,213,183,0.11)',
+                        borderRadius:'50%', width:30, height:30,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        cursor:'pointer', color:C.beige, flexShrink:0,
+                      }}
+                    ><X size={14}/></button>
+                  </div>
+
+                  {/* Duration rows：仅副标题；齿轮 = 从行程中移除此段（可恢复） */}
+                  {(() => {
+                    const ritualVisible = RITUAL_ROWS.filter(
+                      (row) => !ritualSkipped.includes(row.key) && !(isPink && row.key === 'linger'),
+                    );
+                    const ritualHidden = RITUAL_ROWS.filter(
+                      (row) => ritualSkipped.includes(row.key) && !(isPink && row.key === 'linger'),
+                    );
+                    const rowDivider = '0.5px solid rgba(201, 169, 110, 0.15)';
+                    const showHidden = ritualHidden.length > 0;
+                    const rowBtn: React.CSSProperties = {
+                      background: 'rgba(228,213,183,0.07)',
+                      border: '1px solid rgba(228,213,183,0.1)',
+                      borderRadius: '50%',
+                      width: 30,
+                      height: 30,
+                      color: C.beige,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    };
+                    const ritualDurBtn: React.CSSProperties = {
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      border: `1px solid color-mix(in srgb, ${C.rosy} 55%, transparent)`,
+                      background: 'transparent',
+                      color: C.rosy,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 16,
+                      lineHeight: 1,
+                      padding: 0,
+                      flexShrink: 0,
+                    };
+                    return (
+                      <>
+                        {ritualVisible.map((item, i, arr) => (
+                          <div
+                            key={item.key}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 12,
+                              boxSizing: 'border-box',
+                              minHeight: 64,
+                              borderBottom:
+                                i < arr.length - 1 || showHidden ? rowDivider : 'none',
+                              padding: '0 2px',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              aria-label="Remove from journey"
+                              title="Remove from journey"
+                              onClick={() => toggleRitualSkip(item.key)}
+                              style={rowBtn}
+                            >
+                              <Settings2 size={15} strokeWidth={1.35} />
+                            </button>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontSize: 14,
+                                  color: 'rgba(228,213,183,0.92)',
+                                  lineHeight: 1.3,
+                                  fontFamily: 'Georgia, "Cormorant Garamond", serif',
+                                  fontStyle: 'italic',
+                                }}
+                              >
+                                {item.sub}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <button
+                                type="button"
+                                onClick={() => adjustDuration(item.key, -5)}
+                                style={ritualDurBtn}
+                              >
+                                −
+                              </button>
+                              <span
+                                style={{
+                                  fontFamily: '"Cormorant Garamond", Georgia, serif',
+                                  fontSize: 16,
+                                  color: C.rosy,
+                                  minWidth: 40,
+                                  textAlign: 'center',
+                                }}
+                              >
+                                {durations[item.key]}m
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => adjustDuration(item.key, +5)}
+                                style={ritualDurBtn}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {showHidden && (
+                          <div style={{ marginTop: 16 }}>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: C.moss,
+                                letterSpacing: '0.15em',
+                                marginTop: 14,
+                                marginBottom: 12,
+                                textTransform: 'uppercase',
+                                fontFamily: "'Jost', sans-serif",
+                              }}
+                            >
+                              NOT IN THIS JOURNEY
+                            </div>
+                            {ritualHidden.map((item, hi) => (
+                              <div
+                                key={item.key}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: 12,
+                                  boxSizing: 'border-box',
+                                  minHeight: 64,
+                                  borderBottom: hi < ritualHidden.length - 1 ? rowDivider : 'none',
+                                  padding: '0 2px',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontSize: 13,
+                                    color: 'rgba(228,213,183,0.58)',
+                                    fontFamily: 'Georgia, "Cormorant Garamond", serif',
+                                    fontStyle: 'italic',
+                                    lineHeight: 1.3,
+                                    flex: 1,
+                                    minWidth: 0,
+                                  }}
+                                >
+                                  {item.sub}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="ritual-restore-link"
+                                  onClick={() => toggleRitualSkip(item.key)}
+                                >
+                                  Restore
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+                <img
+                  src="/ritual_reed_right.svg"
+                  alt=""
+                  aria-hidden
+                  style={{
+                    position:'absolute',
+                    right:0,
+                    bottom:'calc(12px + env(safe-area-inset-bottom, 0px))',
+                    width:100,
+                    height:'auto',
+                    opacity:0.3,
+                    pointerEvents:'none',
+                    zIndex:2,
+                  }}
+                />
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* ── Flight log：仅收录 The Journey 全部 now 打卡完成的航班 ── */}
+        <AnimatePresence>
+          {historyOpen && (
+            <>
+              <motion.div
+                key="hist-scrim"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setHistoryOpen(false)}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  zIndex: 52,
+                  background: 'rgba(5,15,15,0.6)',
+                  backdropFilter: 'blur(4px)',
+                  WebkitBackdropFilter: 'blur(4px)',
+                }}
+              />
+              <motion.div
+                key="hist-drawer"
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                style={{
+                  position: 'fixed',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  zIndex: 53,
+                  maxHeight: 'min(78vh, 560px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  borderRadius: '24px 24px 0 0',
+                  background:
+                    'linear-gradient(180deg, color-mix(in srgb, var(--c-bg-152A2A) 98%, transparent) 0%, color-mix(in srgb, var(--c-midnight) 98%, transparent) 100%)',
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)',
+                  border: '1px solid rgba(228,213,183,0.12)',
+                  borderBottom: 'none',
+                  padding: '16px 20px calc(22px + env(safe-area-inset-bottom, 0px))',
+                }}
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 4,
+                    borderRadius: 2,
+                    background: 'rgba(228,213,183,0.18)',
+                    margin: '0 auto 14px',
+                  }}
+                />
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: 12,
+                    flexShrink: 0,
+                  }}
+                >
                   <div>
-                    <div style={{
-                      fontFamily:'"Cormorant Garamond", Georgia, serif',
-                      fontStyle:'italic', fontWeight:300,
-                      fontSize:22, color:C.beige, lineHeight:1.1,
-                    }}>MY RITUAL</div>
-                    <div style={{ fontSize:11, color:C.moss, letterSpacing:'0.12em', marginTop:3 }}>your defaults, your pace.</div>
+                    <div
+                      style={{
+                        fontFamily: '"Cormorant Garamond", Georgia, serif',
+                        fontStyle: 'italic',
+                        fontWeight: 300,
+                        fontSize: 22,
+                        color: C.beige,
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      Flight log
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: C.moss,
+                        letterSpacing: '0.1em',
+                        marginTop: 4,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Journeys where you tapped <i>now</i> on every step. Comfort tag = how close your
+                      rhythm was to My Ritual (avg. of each step&apos;s drift).
+                    </div>
                   </div>
                   <button
-                    onClick={() => setSettingsOpen(false)}
+                    type="button"
+                    onClick={() => setHistoryOpen(false)}
                     style={{
-                      background:'rgba(228,213,183,0.07)',
-                      border:'1px solid rgba(228,213,183,0.11)',
-                      borderRadius:'50%', width:30, height:30,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      cursor:'pointer', color:C.beige, flexShrink:0,
-                    }}
-                  ><X size={14}/></button>
-                </div>
-
-                {/* Duration rows */}
-                {(
-                  [
-                    { key:'linger',  Icon:IconWakeyWakey,    label:'Wakey Wakey',    sub:'rise & ease in'   },
-                    { key:'polish',  Icon:IconLeavingHome,    label:'Leaving Home',   sub:'wash up & pack'   },
-                    { key:'rollout', Icon:IconTerminalEntry,  label:'Terminal Entry', sub:'drive to airport' },
-                    { key:'clear',   Icon:IconPastSecurity,   label:'Cleared Security', sub:'security check'   },
-                    { key:'gate',    Icon:IconAtTheGate,      label:'At the Gate',    sub:'walk to gate'     },
-                    { key:'board',   Icon:IconGetOnBoard,     label:'Get On Board',   sub:'before departure' },
-                  ] as const
-                )
-                  .filter(item => !(isPink && item.key === 'linger'))
-                  .map((item, i, arr) => (
-                  <div
-                    key={item.key}
-                    style={{
-                      display:'flex', alignItems:'center', gap:10,
-                      padding:'10px 0',
-                      borderBottom: i < arr.length - 1 ? '1px solid rgba(228,213,183,0.06)' : 'none',
+                      background: 'rgba(228,213,183,0.07)',
+                      border: '1px solid rgba(228,213,183,0.11)',
+                      borderRadius: '50%',
+                      width: 30,
+                      height: 30,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: C.beige,
+                      flexShrink: 0,
                     }}
                   >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div
+                  style={{
+                    overflowY: 'auto',
+                    flex: 1,
+                    minHeight: 0,
+                    marginRight: -4,
+                    paddingRight: 4,
+                  }}
+                >
+                  {flightHistory.length === 0 ? (
                     <div
-                      className="journey-icon-tint"
                       style={{
-                      width:30, height:30, flexShrink:0,
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                    }}>
-                      <item.Icon />
+                        fontSize: 12,
+                        color: 'color-mix(in srgb, var(--c-moss) 70%, transparent)',
+                        fontFamily: '"Cormorant Garamond", serif',
+                        fontStyle: 'italic',
+                        lineHeight: 1.5,
+                        padding: '12px 0 8px',
+                      }}
+                    >
+                      Nothing here yet — finish The Journey (every checkpoint) once, and this log will
+                      hold that flight with a little comfort label.
                     </div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{
-                        fontSize:13, color:'rgba(228,213,183,0.9)', lineHeight:1.2,
-                        fontFamily:'"Cormorant Garamond", serif', fontStyle:'italic',
-                      }}>{item.label}</div>
-                      <div style={{ fontSize:10, color:'color-mix(in srgb, var(--c-moss) 78%, transparent)', letterSpacing:'0.07em' }}>{item.sub}</div>
-                    </div>
-                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <button
-                        onClick={() => adjustDuration(item.key as DurKey, -5)}
+                  ) : (
+                    flightHistory.map((h) => (
+                      <div
+                        key={h.id}
                         style={{
-                          background:'rgba(228,213,183,0.07)',
-                          border:'1px solid rgba(228,213,183,0.1)',
-                          borderRadius:7, width:26, height:26,
-                          color:C.beige, cursor:'pointer',
-                          display:'flex', alignItems:'center', justifyContent:'center',
-                          fontSize:18, lineHeight:1, paddingBottom:1,
+                          padding: '12px 0',
+                          borderBottom: '1px solid rgba(228,213,183,0.06)',
                         }}
-                      >−</button>
-                      <span style={{
-                        fontFamily:'"Cormorant Garamond", Georgia, serif',
-                        fontSize:16, color:C.rosy, minWidth:38, textAlign:'center',
-                      }}>
-                        {durations[item.key as DurKey]}m
-                      </span>
-                      <button
-                        onClick={() => adjustDuration(item.key as DurKey, +5)}
-                        style={{
-                          background:'rgba(228,213,183,0.07)',
-                          border:'1px solid rgba(228,213,183,0.1)',
-                          borderRadius:7, width:26, height:26,
-                          color:C.beige, cursor:'pointer',
-                          display:'flex', alignItems:'center', justifyContent:'center',
-                          fontSize:18, lineHeight:1, paddingBottom:1,
-                        }}
-                      >+</button>
-                    </div>
-                  </div>
-                ))}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'baseline',
+                            gap: 10,
+                            marginBottom: 4,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontFamily: '"Cormorant Garamond", Georgia, serif',
+                              fontSize: 17,
+                              color: C.beige,
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            {h.flightNo}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 10,
+                              color: C.moss,
+                              letterSpacing: '0.08em',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {format(parseFlightDate(h.flightDate), 'MMM d, yyyy', { locale: enUS })}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: 'rgba(228,213,183,0.78)',
+                            letterSpacing: '0.06em',
+                            marginBottom: 6,
+                          }}
+                        >
+                          {h.origin} → {h.dest} · dep {h.depTime}
+                        </div>
+                        <div
+                          style={{
+                            display: 'inline-block',
+                            fontSize: 11,
+                            fontFamily: '"Cormorant Garamond", serif',
+                            fontStyle: 'italic',
+                            color: C.rosy,
+                            letterSpacing: '0.04em',
+                            background: 'color-mix(in srgb, var(--c-rosy) 12%, transparent)',
+                            border: '1px solid color-mix(in srgb, var(--c-rosy) 22%, transparent)',
+                            borderRadius: 999,
+                            padding: '3px 10px',
+                          }}
+                        >
+                          {h.comfortTag}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </motion.div>
             </>
           )}
