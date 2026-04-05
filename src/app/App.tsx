@@ -129,6 +129,28 @@ function getAudioCtx(): AudioContext | null {
   if (!_audioCtx) _audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext?: new () => AudioContext }).webkitAudioContext)();
   return _audioCtx;
 }
+
+/**
+ * 必须在用户点击的同步调用栈内完成解锁。
+ * 若用 async/await，resume 之后的振荡器创建会落到微任务里，浏览器会按「无用户手势」静音（Go / now 都没声）。
+ */
+function primeAudioInUserGesture(ctx: AudioContext): void {
+  try {
+    void ctx.resume();
+  } catch {
+    /* ignore */
+  }
+  try {
+    const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 轻微触觉震动（支持设备时） */
 function triggerHaptic(): void {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -137,17 +159,11 @@ function triggerHaptic(): void {
 }
 
 /** GO 按钮：风声 + 低频震动感（触觉 + 听觉 + 视觉轻抖） */
-async function playGoSound(): Promise<void> {
+function playGoSound(): void {
   const ctx = getAudioCtx();
   if (!ctx) return;
-  if (ctx.state === 'suspended') {
-    try {
-      await ctx.resume();
-    } catch {
-      return;
-    }
-  }
-  const t = ctx.currentTime + 0.01;
+  primeAudioInUserGesture(ctx);
+  const t = ctx.currentTime + 0.04;
 
   triggerHaptic();
 
@@ -187,17 +203,11 @@ async function playGoSound(): Promise<void> {
   windSource.stop(t + windDur);
 }
 /** now 按钮：短促双音「哒—哒」— 两下轻触 */
-async function playNowSound(): Promise<void> {
+function playNowSound(): void {
   const ctx = getAudioCtx();
   if (!ctx) return;
-  if (ctx.state === 'suspended') {
-    try {
-      await ctx.resume();
-    } catch {
-      return;
-    }
-  }
-  const t = ctx.currentTime + 0.01;
+  primeAudioInUserGesture(ctx);
+  const t = ctx.currentTime + 0.04;
   const tap = (start: number, freq: number) => {
     const o = ctx.createOscillator();
     const g = ctx.createGain();
@@ -1475,7 +1485,7 @@ export default function App() {
       onPointerDown={onBgClickToggleSkin}
       style={{
         width: '100%',
-        height: '100dvh',
+        minHeight: '100dvh',
         display: 'flex',
         alignItems: 'stretch',
         justifyContent: 'stretch',
@@ -1483,16 +1493,18 @@ export default function App() {
         padding: 0,
         boxSizing: 'border-box',
         touchAction: 'manipulation',
-        overscrollBehavior: 'none',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehaviorY: 'auto',
       }}
     >
       {/* ── App full-screen canvas ── */}
       <div
         style={{
           width: '100%',
-          height: '100%',
+          minHeight: '100dvh',
           position: 'relative',
-          overflow: 'hidden',
+          overflow: 'visible',
           borderRadius: 0,
           boxShadow: 'none',
           marginInline: 0,
@@ -1521,13 +1533,13 @@ export default function App() {
         {/* ── Main content ── */}
         <div style={{
           position:'relative', zIndex:1,
-          height:'100%', boxSizing:'border-box',
-          minHeight: 0,
+          boxSizing:'border-box',
+          minHeight: '100dvh',
           display:'flex', flexDirection:'column',
           paddingTop: `calc(26px + env(safe-area-inset-top, 0px))`,
           paddingLeft: 16,
           paddingRight: 16,
-          paddingBottom: `calc(14px + env(safe-area-inset-bottom, 0px))`,
+          paddingBottom: `calc(22px + env(safe-area-inset-bottom, 0px))`,
           gap:5,
         }}>
 
@@ -2064,15 +2076,14 @@ export default function App() {
             </AnimatePresence>
           </motion.div>
 
-          {/* ── Timeline：高度随节点多少伸缩，多节点时内部滚动（避免 Safari 裁切） ── */}
+          {/* ── Timeline：与整页同滚，节点多时不限高（由外层 chrono-bg 纵向滚动） ── */}
           <div
             data-skin-card="1"
             style={{
-            flex: '0 1 auto',
-            minHeight: 0,
+            flex: '0 0 auto',
             padding:'8px 10px 10px',
             display:'flex', flexDirection:'column',
-            overflow:'hidden',
+            overflow:'visible',
             ...liquidGlassPrimaryCard(18),
           }}>
             <div style={{
@@ -2116,15 +2127,10 @@ export default function App() {
 
             <div
               style={{
-                overflowY: 'auto',
-                WebkitOverflowScrolling: 'touch',
-                overscrollBehavior: 'contain',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 10,
                 paddingBottom: 6,
-                maxHeight:
-                  'min(68dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 200px))',
               }}
             >
               {journeyNodes.map((node, index) => {
