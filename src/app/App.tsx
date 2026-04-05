@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, X, Plus, Minus, ChevronDown, CalendarIcon, ChevronLeft, ChevronRight, History } from 'lucide-react';
+import { Settings, X, Plus, Minus, ChevronDown, CalendarIcon, ChevronLeft, ChevronRight, History, Trash2 } from 'lucide-react';
 import { DayPicker, CaptionLabel } from 'react-day-picker';
 import { format, parse, addMonths } from 'date-fns';
 import { enUS } from 'date-fns/locale';
@@ -2617,7 +2617,7 @@ export default function App() {
                                 flexShrink: 0,
                               }}
                             >
-                              <X size={14} strokeWidth={2} />
+                              <Trash2 size={14} strokeWidth={2} />
                             </button>
                           </div>
                         </div>
