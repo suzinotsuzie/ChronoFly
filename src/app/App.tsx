@@ -1,12 +1,28 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, Settings2, X, ChevronDown, CalendarIcon, ChevronLeft, ChevronRight, History } from 'lucide-react';
+import { Settings, X, Plus, Minus, ChevronDown, CalendarIcon, ChevronLeft, ChevronRight, History } from 'lucide-react';
 import { DayPicker, CaptionLabel } from 'react-day-picker';
 import { format, parse, addMonths } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import type { CaptionProps } from 'react-day-picker';
 import { syncAlarmToDevice } from './localAlarm';
+import { AlarmHeroDecor } from './AlarmHeroDecor';
+import { RitualDrawerMonetDecor } from './RitualDrawerMonetDecor';
+
+/** My Ritual：极简「去掉此项」— 仅圆角 ×，与右侧粉圈内的时长「−」字形区分 */
+function RitualRemoveStepGlyph({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path
+        d="M7.35 7.35l9.3 9.3m0-9.3l-9.3 9.3"
+        stroke="currentColor"
+        strokeWidth="1.65"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 function parseFlightDate(ymd: string): Date {
   try {
@@ -42,6 +58,69 @@ const C = {
   beige:    'var(--c-beige)',
   rosy:     'var(--c-rosy)',
 };
+
+/**
+ * 一级页主卡片与抽屉内玻璃；`light` 用于「Not in this journey」等嵌套块。
+ * `drawerNested`：关闭 backdrop-filter，避免抽屉内再叠一层实时模糊（移动端易卡顿）。
+ */
+function liquidGlassPrimaryCard(
+  borderRadius: number,
+  opts?: { light?: boolean; drawerNested?: boolean },
+): React.CSSProperties {
+  const light = !!opts?.light;
+  const drawerNested = !!opts?.drawerNested;
+  const soft = light || drawerNested;
+  let background: string;
+  if (drawerNested) {
+    // 底部略提亮，避免圆角与多层 inset 阴影在 WebKit 上挤出黑边
+    background =
+      'linear-gradient(155deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.055) 42%, rgba(240,228,210,0.09) 52%, rgba(26,58,52,0.28) 100%)';
+  } else if (light) {
+    background =
+      'linear-gradient(155deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.04) 38%, rgba(240,228,210,0.06) 50%, rgba(0,0,0,0.1) 100%)';
+  } else {
+    background =
+      'linear-gradient(155deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.045) 36%, rgba(240,228,210,0.065) 50%, rgba(0,0,0,0.14) 100%)';
+  }
+  const bf = drawerNested ? 'none' : light ? 'blur(9px) saturate(1.22)' : 'blur(14px) saturate(1.42)';
+
+  // 抽屉内嵌卡片：禁止外扩 box-shadow — 在 overflow:auto 的父级里会被按矩形裁切，底部像「方角黑块」
+  const boxShadow = drawerNested
+    ? ['inset 0 0 0 0.5px rgba(255,255,255,0.06)', 'inset 0 1px 0 rgba(255,255,255,0.08)'].join(
+        ', ',
+      )
+    : [
+        `inset 0 0 0 0.5px rgba(255,255,255,${soft ? 0.05 : 0.058})`,
+        `inset 4px 4px 6px -5px rgba(255,255,255,${soft ? 0.16 : 0.22})`,
+        `inset -4px 4px 6px -5px rgba(255,255,255,${soft ? 0.14 : 0.2})`,
+        `inset 4px -4px 6px -5px rgba(255,255,255,${soft ? 0.06 : 0.075})`,
+        `inset -4px -4px 6px -5px rgba(255,255,255,${soft ? 0.08 : 0.1})`,
+        `inset 0 0.5px 0 rgba(255,255,255,${soft ? 0.055 : 0.07})`,
+        'inset 0 -1px 0 rgba(0,0,0,0.07)',
+        soft ? '0 10px 28px rgba(0,0,0,0.16)' : '0 18px 52px rgba(0,0,0,0.26)',
+        soft ? '0 3px 10px rgba(0,0,0,0.1)' : '0 6px 16px rgba(0,0,0,0.16)',
+      ].join(', ');
+
+  return {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius,
+    background,
+    backdropFilter: bf,
+    WebkitBackdropFilter: bf,
+    border: 'none',
+    boxShadow,
+    // 抽屉内嵌卡片：避免 translateZ 合成层 + 四角大半径 inset 在圆角处出现黑边/锯齿
+    ...(drawerNested
+      ? {
+          WebkitBackfaceVisibility: 'hidden' as const,
+          backfaceVisibility: 'hidden' as const,
+          isolation: 'isolate' as const,
+          contain: 'layout paint' as const,
+        }
+      : { transform: 'translateZ(0)' }),
+  };
+}
 
 // ── 莫奈睡莲风格动作音效（Web Audio API，无外链）────────────────────────────
 let _audioCtx: AudioContext | null = null;
@@ -138,6 +217,7 @@ async function playNowSound(): Promise<void> {
 
 // ── Mock departure database ───────────────────────────────────────────────
 const MOCK_FLIGHTS: Record<string, string> = {
+  MU1259: '12:00',
   MU5101: '08:05', MU5102: '10:20', MU5129: '09:05', MU9007: '06:40',
   CA1234: '09:30', CA888:  '14:10', CA321:  '07:55',
   CZ3456: '07:15', CZ8801: '11:45', CZ200:  '13:30',
@@ -151,12 +231,16 @@ const MOCK_FLIGHTS: Record<string, string> = {
 const FLIGHT_STATE_KEY = 'chrono_flight_state_v1';
 const FLIGHT_HISTORY_KEY = 'chrono_flight_history_v1';
 const SKIN_KEY = 'chrono_skin_v1';
+/** 各 ritual 时长（用户可改，持久化；独立于单次航班状态） */
+const RITUAL_DURATIONS_KEY = 'chrono_ritual_durations_v1';
 
 /** 仅展示字段；完整打卡 The Journey 后写入 */
 type FlightHistoryEntry = {
   id: string;
   flightNo: string;
   flightDate: string;
+  /** 出发地当地日期（有 API 时用 API；旧数据无此字段则用 flightDate） */
+  depDateYmd?: string;
   origin: string;
   dest: string;
   depTime: string;
@@ -195,6 +279,108 @@ function mockDeparture(flightNo: string): string {
   return `${String(hr).padStart(2, '0')}:${String(mn).padStart(2, '0')}`;
 }
 
+/** AviationStack `data[]` 单条（仅用到的字段） */
+type AviationFlightApiRow = {
+  flight_date?: string | null;
+  departure?: {
+    scheduled?: string | null;
+    timezone?: string | null;
+    iata?: string | null;
+    airport?: string | null;
+  };
+  arrival?: {
+    iata?: string | null;
+    airport?: string | null;
+  };
+};
+
+/** 与一级时间轴、Flight log 共用的 API 解析结果 */
+type FlightApiSnapshot = {
+  depHHMM: string;
+  origin: string;
+  dest: string;
+  /** 出发机场当地日历日 YYYY-MM-DD */
+  depDateYmd: string;
+  scheduledRaw: string;
+  depTimezone: string;
+};
+
+function depLocalFromScheduled(
+  scheduled: string,
+  timeZone?: string | null,
+): { hhmm: string; ymd: string } | null {
+  const d = new Date(scheduled);
+  if (Number.isNaN(d.getTime())) return null;
+  const tz = timeZone?.trim() || undefined;
+  try {
+    const timeFmt = new Intl.DateTimeFormat('en-GB', {
+      ...(tz ? { timeZone: tz } : {}),
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const tp = timeFmt.formatToParts(d);
+    const h = tp.find((p) => p.type === 'hour')?.value;
+    const m = tp.find((p) => p.type === 'minute')?.value;
+    if (h === undefined || m === undefined) return null;
+    const hhmm = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+    const dateFmt = new Intl.DateTimeFormat('en-CA', {
+      ...(tz ? { timeZone: tz } : {}),
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const ymd = dateFmt.format(d);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+    return { hhmm, ymd };
+  } catch {
+    return null;
+  }
+}
+
+function parseAviationFlightRow(
+  row: AviationFlightApiRow | undefined,
+  fallbackDateYmd: string,
+): FlightApiSnapshot | null {
+  const scheduled = row?.departure?.scheduled;
+  if (!scheduled || typeof scheduled !== 'string') return null;
+  const tz = row.departure?.timezone;
+  const local = depLocalFromScheduled(scheduled, tz);
+  let depHHMM: string;
+  let depDateYmd: string;
+  if (local) {
+    depHHMM = local.hhmm;
+    depDateYmd = local.ymd;
+  } else {
+    const match = scheduled.match(/T(\d{2}):(\d{2})/);
+    if (!match) return null;
+    depHHMM = `${match[1]}:${match[2]}`;
+    const fd = row.flight_date;
+    depDateYmd =
+      typeof fd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fd) ? fd : fallbackDateYmd;
+  }
+  const dep = row.departure;
+  const arr = row.arrival;
+  const origin = (dep?.iata || dep?.airport || '').trim() || '—';
+  const dest = (arr?.iata || arr?.airport || '').trim() || '—';
+  return {
+    depHHMM,
+    origin,
+    dest,
+    depDateYmd,
+    scheduledRaw: scheduled,
+    depTimezone: (tz && tz.trim()) || '',
+  };
+}
+
+function airportsOnlyFromRow(row: AviationFlightApiRow | undefined): { origin: string; dest: string } | null {
+  if (!row?.departure) return null;
+  const origin = (row.departure.iata || row.departure.airport || '').trim();
+  const dest = (row.arrival?.iata || row.arrival?.airport || '').trim();
+  if (!origin && !dest) return null;
+  return { origin: origin || '—', dest: dest || '—' };
+}
+
 // ── Time helpers ──────────────────────────────────────────────────────────
 function toMin(t: string): number {
   const [h, m] = t.split(':').map(Number);
@@ -218,12 +404,26 @@ function comfortTagFromMeanAbs(meanAbs: number): string {
   return 'Chaos cupcake';
 }
 
+/**
+ * 把「打卡」的分钟数对齐到与 [wakeMin, boardMin] 同一根轴上。
+ * 同日清晨打卡、计划 wake 在下午时，raw 会小于 wake：这是提早，不能 +1440（否则进度条会打满）。
+ * 仅当 +1440 后落在行程附近时，才视为午夜后的延续（如深夜航班前后）。
+ */
+function alignActualToJourneyWindow(rawActual: number, wakeMin: number, boardMin: number): number {
+  if (rawActual >= wakeMin - 60) return rawActual;
+  const withWrap = rawActual + 1440;
+  const slackAfter = 360;
+  if (withWrap >= wakeMin - 30 && withWrap <= boardMin + slackAfter) return withWrap;
+  return rawActual;
+}
+
 function computeMeanAbsDiff(
   nodeIds: string[],
   stamps: Record<string, string>,
   times: Record<string, number>,
 ): number {
   const wakeMin = times.wake;
+  const boardMin = times.board;
   let sum = 0;
   let n = 0;
   for (const id of nodeIds) {
@@ -231,8 +431,8 @@ function computeMeanAbsDiff(
     if (exp === undefined) continue;
     const st = stamps[id];
     if (!st) continue;
-    let actual = toMin(st);
-    if (actual < wakeMin - 60) actual += 1440;
+    const raw = toMin(st);
+    const actual = alignActualToJourneyWindow(raw, wakeMin, boardMin);
     const diff = actual - exp;
     sum += Math.abs(diff);
     n += 1;
@@ -493,13 +693,13 @@ const IconDepartureTime = () => (
 // ── Node definitions ───────────────────────────────────────────────────────
 const NODES = [
   { id: 'wake',    Icon: IconRingRing,        label: 'Ring Ring',          sub: 'Alarm rings',                     cardClass: 'card-1', isFirst: true  },
-  { id: 'linger',  Icon: IconWakeyWakey,      label: 'Wakey Wakey',        sub: 'one last dream',                  cardClass: 'card-2', isFirst: false },
-  { id: 'polish',  Icon: IconLeavingHome,     label: 'Leaving Home',       sub: 'wash, pack, & glow',             cardClass: 'card-3', isFirst: false },
-  { id: 'rollout', Icon: IconTerminalEntry,   label: 'Terminal Entry',     sub: 'heading to the airport',        cardClass: 'card-4', isFirst: false },
-  { id: 'checkin', Icon: IconCheckInComplete, label: 'Check-in Complete',  sub: 'tags, bags, and boarding passes', cardClass: 'card-5', isFirst: false },
+  { id: 'linger',  Icon: IconWakeyWakey,      label: 'Wakey Wakey',        sub: 'a little longer in bed',        cardClass: 'card-2', isFirst: false },
+  { id: 'polish',  Icon: IconLeavingHome,     label: 'Leaving Home',       sub: 'wash up, pack, quick glow-up',   cardClass: 'card-3', isFirst: false },
+  { id: 'rollout', Icon: IconTerminalEntry,   label: 'Terminal Entry',     sub: 'travel time to the airport',    cardClass: 'card-4', isFirst: false },
+  { id: 'checkin', Icon: IconCheckInComplete, label: 'Check-in Complete',  sub: 'tags, bags, boarding passes',     cardClass: 'card-5', isFirst: false },
   { id: 'clear',   Icon: IconPastSecurity,    label: 'Cleared Security',   sub: 'belt off, shoes off',           cardClass: 'card-6', isFirst: false },
-  { id: 'gate',    Icon: IconAtTheGate,       label: 'At the Gate',        sub: 'wandering to the gate',         cardClass: 'card-7', isFirst: false },
-  { id: 'zen',     Icon: IconGetOnBoard,      label: 'Now Boarding',       sub: 'zen time before boarding',      cardClass: 'card-8', isFirst: false },
+  { id: 'gate',    Icon: IconAtTheGate,       label: 'At the Gate',        sub: 'wander your way to the gate',   cardClass: 'card-7', isFirst: false },
+  { id: 'zen',     Icon: IconGetOnBoard,      label: 'Now Boarding',       sub: 'quiet before boarding starts',  cardClass: 'card-8', isFirst: false },
 ];
 
 type DurKey = keyof Durations;
@@ -509,6 +709,34 @@ const RITUAL_ORDER: DurKey[] = ['linger', 'polish', 'rollout', 'checkin', 'clear
 
 function isDurKey(k: unknown): k is DurKey {
   return typeof k === 'string' && (RITUAL_ORDER as readonly string[]).includes(k);
+}
+
+/** 去重并按行程顺序排列，避免脏数据导致 UI 异常 */
+function normalizeRitualSkipped(raw: unknown[]): DurKey[] {
+  const set = new Set<DurKey>();
+  for (const x of raw) {
+    if (isDurKey(x)) set.add(x);
+  }
+  return RITUAL_ORDER.filter((k) => set.has(k));
+}
+
+function loadStoredDurations(): Durations {
+  try {
+    if (typeof window === 'undefined') return { ...DEFAULT_DURATIONS };
+    const raw = localStorage.getItem(RITUAL_DURATIONS_KEY);
+    if (!raw) return { ...DEFAULT_DURATIONS };
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const next = { ...DEFAULT_DURATIONS };
+    for (const key of RITUAL_ORDER) {
+      const v = data[key];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        next[key] = Math.max(5, Math.min(120, Math.round(v)));
+      }
+    }
+    return next;
+  } catch {
+    return { ...DEFAULT_DURATIONS };
+  }
 }
 
 /** 跳过环节时不计入总时长；各节点时刻为「完成该段之后」的累计时间 */
@@ -540,22 +768,252 @@ function getLastVisibleJourneyId(skipped: ReadonlySet<DurKey>, isPink: boolean):
   return 'wake';
 }
 
-const RITUAL_ROWS: { key: DurKey; sub: string }[] = [
-  { key: 'linger', sub: 'one last dream' },
-  { key: 'polish', sub: 'wash, pack, & glow' },
-  { key: 'rollout', sub: 'heading to the airport' },
-  { key: 'checkin', sub: 'tags, bags, and boarding passes' },
-  { key: 'clear', sub: 'belt off, shoes off' },
-  { key: 'gate', sub: 'wandering to the gate' },
-  { key: 'zen', sub: 'zen time before boarding' },
-  { key: 'wheels', sub: 'from boarding to wheels up' },
+const RITUAL_ROWS: { key: DurKey; title: string; sub: string }[] = [
+  { key: 'linger', title: 'Snooze time', sub: 'a little longer in bed' },
+  { key: 'polish', title: 'Pre-flight prep', sub: 'wash up, pack, quick glow-up' },
+  { key: 'rollout', title: 'En route', sub: 'travel time to the airport' },
+  { key: 'checkin', title: 'Check-in', sub: 'tags, bags, boarding passes' },
+  { key: 'clear', title: 'Security', sub: 'belt off, shoes off' },
+  { key: 'gate', title: 'Gate stroll', sub: 'wander your way to the gate' },
+  { key: 'zen', title: 'Pre-board buffer', sub: 'quiet before boarding starts' },
+  { key: 'wheels', title: 'Board to wheels', sub: 'from the gate to wheels-up' },
 ];
+
+type RitualDrawerDurationSectionProps = {
+  isPink: boolean;
+  ritualSkipped: DurKey[];
+  durations: Durations;
+  notInJourneyGlass: React.CSSProperties;
+  onToggleSkip: (key: DurKey) => void;
+  onAdjustDuration: (key: DurKey, delta: number) => void;
+};
+
+/** My Ritual 列表与 Not in this journey：memo + 稳定回调，避免父组件无关重绘拖慢区块更新 */
+const RitualDrawerDurationSection = memo(function RitualDrawerDurationSection({
+  isPink,
+  ritualSkipped,
+  durations,
+  notInJourneyGlass,
+  onToggleSkip,
+  onAdjustDuration,
+}: RitualDrawerDurationSectionProps) {
+  const ritualVisible = useMemo(
+    () =>
+      RITUAL_ROWS.filter(
+        (row) => !ritualSkipped.includes(row.key) && !(isPink && row.key === 'linger'),
+      ),
+    [isPink, ritualSkipped],
+  );
+  const ritualHidden = useMemo(
+    () =>
+      RITUAL_ROWS.filter(
+        (row) => ritualSkipped.includes(row.key) && !(isPink && row.key === 'linger'),
+      ),
+    [isPink, ritualSkipped],
+  );
+  const rowDivider = '0.5px solid rgba(201, 169, 110, 0.12)';
+  const showHidden = ritualHidden.length > 0;
+  const rowBtn: React.CSSProperties = {
+    background: 'rgba(228,213,183,0.07)',
+    border: '1px solid rgba(228,213,183,0.1)',
+    borderRadius: '50%',
+    width: 30,
+    height: 30,
+    color: C.beige,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  };
+  const ritualDurBtn: React.CSSProperties = {
+    width: 28,
+    height: 28,
+    borderRadius: '50%',
+    border: `1px solid color-mix(in srgb, ${C.rosy} 55%, transparent)`,
+    background: 'transparent',
+    color: C.rosy,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    flexShrink: 0,
+    boxSizing: 'border-box',
+    WebkitTapHighlightColor: 'transparent',
+  };
+
+  return (
+    <>
+      {ritualVisible.map((item, i, arr) => (
+        <div
+          key={item.key}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            boxSizing: 'border-box',
+            minHeight: 72,
+            borderBottom: i < arr.length - 1 ? rowDivider : 'none',
+            padding: '0 2px',
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Remove this step from your journey"
+            title="Remove this step from your journey"
+            onClick={() => onToggleSkip(item.key)}
+            style={rowBtn}
+          >
+            <RitualRemoveStepGlyph size={18} />
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: C.beige,
+                lineHeight: 1.25,
+                fontFamily: "'Jost', system-ui, sans-serif",
+                letterSpacing: '0.02em',
+                marginBottom: 2,
+              }}
+            >
+              {item.title}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 400,
+                color: 'rgba(228,213,183,0.52)',
+                lineHeight: 1.4,
+                fontFamily: "'Jost', system-ui, sans-serif",
+                letterSpacing: '0.04em',
+              }}
+            >
+              {item.sub}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              type="button"
+              aria-label="Decrease minutes"
+              onClick={() => onAdjustDuration(item.key, -5)}
+              style={ritualDurBtn}
+            >
+              <Minus size={15} strokeWidth={2.25} absoluteStrokeWidth />
+            </button>
+            <span
+              style={{
+                fontFamily: '"Cormorant Garamond", Georgia, serif',
+                fontSize: 16,
+                color: C.rosy,
+                minWidth: 40,
+                textAlign: 'center',
+              }}
+            >
+              {durations[item.key]}m
+            </span>
+            <button
+              type="button"
+              aria-label="Increase minutes"
+              onClick={() => onAdjustDuration(item.key, +5)}
+              style={ritualDurBtn}
+            >
+              <Plus size={15} strokeWidth={2.25} absoluteStrokeWidth />
+            </button>
+          </div>
+        </div>
+      ))}
+      {showHidden && (
+        <div
+          style={{
+            marginTop: 20,
+            marginBottom: 4,
+            padding: '14px 14px 16px',
+            ...notInJourneyGlass,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: C.moss,
+              letterSpacing: '0.14em',
+              marginBottom: 10,
+              textTransform: 'uppercase',
+              fontFamily: "'Jost', sans-serif",
+            }}
+          >
+            Not in this journey
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 8,
+              contain: 'layout style',
+            }}
+          >
+            {ritualHidden.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => onToggleSkip(item.key)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  maxWidth: '100%',
+                  padding: '6px 12px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(228,213,183,0.32)',
+                  background: 'color-mix(in srgb, var(--c-midnight) 78%, rgba(228,213,183,0.14))',
+                  cursor: 'pointer',
+                  boxSizing: 'border-box',
+                  flexShrink: 0,
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: 'rgba(228,213,183,0.92)',
+                    fontFamily: "'Jost', system-ui, sans-serif",
+                    letterSpacing: '0.02em',
+                    textAlign: 'left',
+                  }}
+                >
+                  {item.title}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9,
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    color: 'color-mix(in srgb, var(--c-rosy) 62%, transparent)',
+                    fontFamily: "'Jost', sans-serif",
+                    textDecoration: 'underline',
+                    textUnderlineOffset: 2,
+                    flexShrink: 0,
+                  }}
+                >
+                  restore
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+});
 
 // ── Main Component ────────────────────────────────────────────────────────
 export default function App() {
   const [flightNo, setFlightNo]         = useState('');
   const [submitted, setSubmitted]       = useState('');
-  const [durations, setDurations]       = useState<Durations>(DEFAULT_DURATIONS);
+  const [durations, setDurations]       = useState<Durations>(() => loadStoredDurations());
   const [stamps, setStamps]             = useState<Record<string, string>>({});
   /** 手动隐藏的 ritual 段：不计入总时长、一级不展示对应节点；新航班提交时清空 */
   const [ritualSkipped, setRitualSkipped] = useState<DurKey[]>([]);
@@ -578,6 +1036,7 @@ export default function App() {
   /** 避免同一套打卡重复写入历史 */
   const journeyHistorySigRef = useRef<string>('');
   const [flightDepStr, setFlightDepStr] = useState<string | null>(null);
+  const [flightApiSnapshot, setFlightApiSnapshot] = useState<FlightApiSnapshot | null>(null);
   const [flightLoading, setFlightLoading] = useState(false);
   const [alarmSyncHint, setAlarmSyncHint] = useState('');
   const [flightDate, setFlightDate] = useState(() => {
@@ -599,7 +1058,6 @@ export default function App() {
     'var(--c-bg-1A3A2A)',
   ].join(', ');
 
-  const alarmBackground = 'linear-gradient(135deg, color-mix(in srgb, var(--c-dark) 55%, transparent) 0%, color-mix(in srgb, var(--c-beige) 6%, transparent) 100%)';
 
   // ── Restore last flight state for today ──────────────────────────────────
   useEffect(() => {
@@ -613,6 +1071,7 @@ export default function App() {
         flightDate?: string;
         stamps?: Record<string, string>;
         ritualSkipped?: unknown;
+        flightApiSnapshot?: FlightApiSnapshot | null;
       };
       if (!data.submitted || !data.flightDate) return;
       // 仅在航班当天恢复
@@ -639,9 +1098,24 @@ export default function App() {
       setFlightNo(data.flightNo || data.submitted);
       setSubmitted(data.submitted);
       setStamps(data.stamps ?? {});
-      setRitualSkipped(Array.isArray(data.ritualSkipped) ? data.ritualSkipped.filter(isDurKey) : []);
+      setRitualSkipped(normalizeRitualSkipped(Array.isArray(data.ritualSkipped) ? data.ritualSkipped : []));
       setRevealed(true);
-      setFlightDepStr(mockDeparture(data.submitted));
+      const snap = data.flightApiSnapshot;
+      if (
+        snap &&
+        typeof snap.depHHMM === 'string' &&
+        typeof snap.origin === 'string' &&
+        typeof snap.dest === 'string' &&
+        typeof snap.depDateYmd === 'string'
+      ) {
+        setFlightDepStr(snap.depHHMM);
+        setFlightOrigin(snap.origin);
+        setFlightDest(snap.dest);
+        setFlightApiSnapshot(snap);
+      } else {
+        setFlightDepStr(mockDeparture(data.submitted));
+        setFlightApiSnapshot(null);
+      }
     } catch {
       // ignore parse errors
     }
@@ -683,13 +1157,24 @@ export default function App() {
         submitted,
         flightDate,
         stamps,
-        ritualSkipped,
+        ritualSkipped: normalizeRitualSkipped(ritualSkipped),
+        flightApiSnapshot,
       };
       localStorage.setItem(FLIGHT_STATE_KEY, JSON.stringify(payload));
     } catch {
       // ignore quota errors
     }
-  }, [flightNo, submitted, flightDate, stamps, ritualSkipped]);
+  }, [flightNo, submitted, flightDate, stamps, ritualSkipped, flightApiSnapshot]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(RITUAL_DURATIONS_KEY, JSON.stringify(durations));
+    } catch {
+      // ignore quota
+    }
+  }, [durations]);
+
   useEffect(() => {
     if (!datePickerOpen) return;
     const close = (e: MouseEvent) => {
@@ -703,6 +1188,22 @@ export default function App() {
       setDatePickerRect(null);
     };
   }, [datePickerOpen]);
+
+  /** 底栏抽屉打开时锁住 html/body 滚动，避免触摸滑动穿透到背后一级页（尤其 iOS） */
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!settingsOpen && !historyOpen) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtml = html.style.overflow;
+    const prevBody = body.style.overflow;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    return () => {
+      html.style.overflow = prevHtml;
+      body.style.overflow = prevBody;
+    };
+  }, [settingsOpen, historyOpen]);
 
   useEffect(() => {
     saveProfile(userName, userAvatar);
@@ -756,6 +1257,10 @@ export default function App() {
   };
 
   const isPink = skin === 'theme-pink';
+  const notInJourneyGlass = useMemo(
+    () => liquidGlassPrimaryCard(20, { light: true, drawerNested: true }),
+    [],
+  );
 
   const depStr   = submitted ? (flightDepStr ?? mockDeparture(submitted)) : null;
   const times    = depStr   ? calcTimes(depStr, durations, skippedSet) : null;
@@ -820,10 +1325,12 @@ export default function App() {
 
     const meanAbs = computeMeanAbsDiff(ids, stamps, times);
     const tag = comfortTagFromMeanAbs(meanAbs);
+    const depYmd = flightApiSnapshot?.depDateYmd ?? flightDate;
     const entry: FlightHistoryEntry = {
       id: `${submitted}_${flightDate}_${Date.now()}`,
       flightNo: submitted,
       flightDate,
+      depDateYmd: depYmd,
       origin: flightOrigin.trim() || '—',
       dest: flightDest.trim() || '—',
       depTime: depStr,
@@ -833,7 +1340,7 @@ export default function App() {
     setFlightHistory((prev) =>
       [entry, ...prev.filter((e) => !(e.flightNo === submitted && e.flightDate === flightDate))].slice(0, 50),
     );
-  }, [stamps, submitted, flightDate, depStr, times, journeyNodeIds, flightOrigin, flightDest]);
+  }, [stamps, submitted, flightDate, depStr, times, journeyNodeIds, flightOrigin, flightDest, flightApiSnapshot]);
 
   /** API 晚于打卡返回时，补全日志里的起降地 */
   useEffect(() => {
@@ -868,41 +1375,39 @@ export default function App() {
     journeyHistorySigRef.current = '';
     setFlightOrigin('');
     setFlightDest('');
+    setFlightApiSnapshot(null);
     const mock = mockDeparture(val);
     setFlightDepStr(mock);
     setFlightLoading(true);
     fetch(`/api/flight?flightNo=${encodeURIComponent(val)}&flight_date=${encodeURIComponent(flightDate)}`)
       .then((r) => r.json())
-      .then(
-        (json: {
-          data?: Array<{
-            departure?: { scheduled?: string; iata?: string; airport?: string };
-            arrival?: { iata?: string; airport?: string };
-          }>;
-        }) => {
-          const row = json?.data?.[0];
-          const scheduled = row?.departure?.scheduled;
-          if (scheduled && typeof scheduled === 'string') {
-            const d = new Date(scheduled);
-            if (!Number.isNaN(d.getTime())) {
-              const h = d.getHours();
-              const m = d.getMinutes();
-              setFlightDepStr(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-            } else {
-              const match = scheduled.match(/T(\d{2}):(\d{2})/);
-              if (match) setFlightDepStr(`${match[1]}:${match[2]}`);
-            }
+      .then((json: { data?: AviationFlightApiRow[] }) => {
+        const row = json?.data?.[0];
+        const snap = parseAviationFlightRow(row, flightDate);
+        if (snap) {
+          setFlightDepStr(snap.depHHMM);
+          setFlightOrigin(snap.origin);
+          setFlightDest(snap.dest);
+          setFlightApiSnapshot(snap);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(snap.depDateYmd)) {
+            setFlightDate(snap.depDateYmd);
+            setDatePickerMonth(parseFlightDate(snap.depDateYmd));
           }
-          if (row) {
-            const o = row.departure?.iata || row.departure?.airport || '';
-            const dest = row.arrival?.iata || row.arrival?.airport || '';
-            setFlightOrigin(o.trim() || '—');
-            setFlightDest(dest.trim() || '—');
+        } else {
+          setFlightApiSnapshot(null);
+          const ap = airportsOnlyFromRow(row);
+          if (ap) {
+            setFlightOrigin(ap.origin);
+            setFlightDest(ap.dest);
           }
-        },
-      )
+        }
+      })
       .catch(() => {})
       .finally(() => setFlightLoading(false));
+  };
+
+  const removeFlightHistoryEntry = (id: string) => {
+    setFlightHistory((prev) => prev.filter((e) => e.id !== id));
   };
 
   const stampNow = (id: string) => {
@@ -930,20 +1435,21 @@ export default function App() {
     if (span <= 0) return null;
     const expectedMin = times[nodeId];
     if (expectedMin === undefined) return null;
-    const rawActual   = toMin(stamps[nodeId]);
-    // Handle midnight wrap
-    const actualMin = rawActual < wakeMin - 60 ? rawActual + 1440 : rawActual;
+    const rawActual = toMin(stamps[nodeId]);
+    const actualMin = alignActualToJourneyWindow(rawActual, wakeMin, boardMin);
     const ePct = Math.max(0, Math.min(100, (expectedMin - wakeMin) / span * 100));
     const aPct = Math.max(0, Math.min(100, (actualMin   - wakeMin) / span * 100));
     return { ePct, aPct, isEarly: aPct <= ePct };
   };
 
-  const adjustDuration = (key: DurKey, delta: number) => {
-    setDurations(prev => ({ ...prev, [key]: Math.max(5, Math.min(120, prev[key] + delta)) }));
-  };
+  const adjustDuration = useCallback((key: DurKey, delta: number) => {
+    setDurations((prev) => ({ ...prev, [key]: Math.max(5, Math.min(120, prev[key] + delta)) }));
+  }, []);
 
-  const toggleRitualSkip = (key: DurKey) => {
-    setRitualSkipped((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  const toggleRitualSkip = useCallback((key: DurKey) => {
+    setRitualSkipped((prev) =>
+      normalizeRitualSkipped(prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]),
+    );
     if (key !== 'wheels') {
       setStamps((s) => {
         const n = { ...s };
@@ -951,7 +1457,7 @@ export default function App() {
         return n;
       });
     }
-  };
+  }, []);
 
   // 点击“背景空白区域”切换皮肤：只要点击目标不在任何卡片模块内，就在 theme-green/theme-pink 间切换
   const onBgClickToggleSkin = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -1016,6 +1522,7 @@ export default function App() {
         <div style={{
           position:'relative', zIndex:1,
           height:'100%', boxSizing:'border-box',
+          minHeight: 0,
           display:'flex', flexDirection:'column',
           paddingTop: `calc(26px + env(safe-area-inset-top, 0px))`,
           paddingLeft: 16,
@@ -1035,9 +1542,7 @@ export default function App() {
               justifyContent: 'space-between',
               gap: 10,
               padding: '8px 12px',
-              background: 'rgba(228,213,183,0.05)',
-              border: '1px solid rgba(228,213,183,0.11)',
-              borderRadius: 14,
+              ...liquidGlassPrimaryCard(14),
             }}
           >
             <div
@@ -1284,12 +1789,9 @@ export default function App() {
             data-skin-card="1"
             style={{
             flexShrink:0,
-            background:'rgba(228,213,183,0.06)',
-            backdropFilter:'blur(14px)',
-            border:'1px solid rgba(228,213,183,0.13)',
-            borderRadius:16,
             padding:'8px 14px',
             display:'flex', alignItems:'center', gap:12,
+            ...liquidGlassPrimaryCard(16),
           }}>
             <div style={{ flex:1, minWidth:0, display:'flex', alignItems:'stretch', gap:12 }}>
               <div style={{ display:'flex', flexDirection:'column', gap:2, position:'relative' }} ref={dateColumnRef}>
@@ -1454,70 +1956,11 @@ export default function App() {
           {/* ── Wake Alarm Hero ── */}
           <motion.div style={{
             flexShrink:0,
-            background: alarmBackground,
-            backdropFilter:'blur(16px)',
-            border:'1px solid rgba(228,213,183,0.14)',
-            borderRadius:20,
             padding:'10px 20px 10px',
             textAlign:'center',
-            position:'relative', overflow:'hidden',
+            ...liquidGlassPrimaryCard(20),
           }} data-skin-card="1">
-            {/* 闹钟区装饰：左侧 Twin Pads，右侧 Rising Bud，中间少许 Floating Petals */}
-            <div style={{ position:'absolute', inset:0, pointerEvents:'none', borderRadius:20, overflow:'hidden' }} aria-hidden>
-              {/* 左侧：Twin Pads */}
-              <svg width="100" height="70" viewBox="0 0 160 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ position:'absolute', left:-8, bottom:-5, opacity:0.42 }}>
-                <defs>
-                  <radialGradient id="alarm-padL-a" cx="42%" cy="38%" r="62%"><stop offset="0%" stopColor="var(--c-moss)"/><stop offset="100%" stopColor="var(--c-midnight)"/></radialGradient>
-                  <radialGradient id="alarm-padL-b" cx="48%" cy="42%" r="58%"><stop offset="0%" stopColor="var(--c-dark)"/><stop offset="100%" stopColor="var(--c-midnight)"/></radialGradient>
-                  <radialGradient id="alarm-budL" cx="50%" cy="35%" r="55%"><stop offset="0%" stopColor="#E4D5B7"/><stop offset="100%" stopColor="var(--c-rosy)" stopOpacity="0.5"/></radialGradient>
-                </defs>
-                <ellipse cx="80" cy="75" rx="70" ry="20" fill="var(--c-dark)" opacity="0.2"/>
-                <ellipse cx="95" cy="62" rx="36" ry="18" fill="url(#alarm-padL-b)" opacity="0.85" transform="rotate(-8 95 62)"/>
-                <path d="M95 44 L95 62" stroke="var(--c-midnight)" strokeWidth="1.2" opacity="0.4"/>
-                <ellipse cx="58" cy="68" rx="44" ry="22" fill="url(#alarm-padL-a)" opacity="0.9" transform="rotate(5 58 68)"/>
-                <path d="M58 46 L58 68" stroke="var(--c-midnight)" strokeWidth="1.5" opacity="0.45"/>
-                <path d="M58 68 Q38 60 20 63" stroke="var(--c-moss)" strokeWidth="0.8" fill="none" opacity="0.5"/>
-                <path d="M58 68 Q78 60 96 63" stroke="var(--c-moss)" strokeWidth="0.8" fill="none" opacity="0.5"/>
-                <path d="M95 44 Q98 36 95 30" stroke="var(--c-dark)" strokeWidth="1.2" strokeLinecap="round" opacity="0.55"/>
-                <ellipse cx="95" cy="28" rx="5" ry="8" fill="url(#alarm-budL)" opacity="0.85" transform="rotate(10 95 28)"/>
-                <path d="M58 46 Q60 38 58 32" stroke="var(--c-dark)" strokeWidth="1.5" strokeLinecap="round" opacity="0.55"/>
-                <ellipse cx="58" cy="24" rx="6" ry="10" fill="#E4D5B7" opacity="0.8" transform="rotate(0 58 24)"/>
-                <ellipse cx="58" cy="24" rx="6" ry="10" fill="var(--c-rosy)" opacity="0.6" transform="rotate(40 58 32)"/>
-                <ellipse cx="58" cy="24" rx="6" ry="10" fill="var(--c-rosy)" opacity="0.6" transform="rotate(-40 58 32)"/>
-                <circle cx="58" cy="30" r="4.5" fill="#D4A860" opacity="0.85"/><circle cx="58" cy="30" r="2.5" fill="#E4D5B7" opacity="0.65"/>
-              </svg>
-              {/* 右侧：Rising Bud（竖茎 + 花蕾） */}
-              <svg width="56" height="75" viewBox="0 0 80 110" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ position:'absolute', right:4, bottom:-2, opacity:0.38 }}>
-                <defs>
-                  <radialGradient id="alarm-padR" cx="44%" cy="40%" r="60%"><stop offset="0%" stopColor="var(--c-moss)"/><stop offset="100%" stopColor="var(--c-dark)"/></radialGradient>
-                  <linearGradient id="alarm-stemR" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--c-dark)"/><stop offset="100%" stopColor="var(--c-moss)"/></linearGradient>
-                </defs>
-                <ellipse cx="40" cy="88" rx="30" ry="10" fill="var(--c-dark)" opacity="0.25"/>
-                <ellipse cx="40" cy="84" rx="28" ry="14" fill="url(#alarm-padR)" opacity="0.88"/>
-                <path d="M40 70 L40 84" stroke="var(--c-midnight)" strokeWidth="1.2" opacity="0.4"/>
-                <path d="M40 84 Q26 78 14 80" stroke="var(--c-moss)" strokeWidth="0.7" fill="none" opacity="0.45"/>
-                <path d="M40 84 Q54 78 66 80" stroke="var(--c-moss)" strokeWidth="0.7" fill="none" opacity="0.45"/>
-                <path d="M40 84 Q43 65 40 18" stroke="url(#alarm-stemR)" strokeWidth="2" strokeLinecap="round" opacity="0.7"/>
-                <ellipse cx="40" cy="16" rx="8" ry="14" fill="var(--c-rosy)" opacity="0.78"/>
-                <ellipse cx="40" cy="16" rx="5" ry="11" fill="#E4D5B7" opacity="0.72"/>
-                <ellipse cx="40" cy="16" rx="3" ry="8" fill="#E4D5B7" opacity="0.85"/>
-                <path d="M34 22 Q32 28 36 30" stroke="var(--c-dark)" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
-                <path d="M46 22 Q48 28 44 30" stroke="var(--c-dark)" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.55"/>
-              </svg>
-              {/* 中间：少量 Floating Petals 点缀（不挡文字） */}
-              <svg width="100%" height="100%" viewBox="0 0 100 100" fill="none" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" style={{ position:'absolute', left:0, top:0, opacity:0.28 }}>
-                <defs>
-                  <radialGradient id="alarm-petalA" cx="40%" cy="35%" r="60%"><stop offset="0%" stopColor="#E4D5B7"/><stop offset="100%" stopColor="var(--c-rosy)" stopOpacity="0.5"/></radialGradient>
-                  <radialGradient id="alarm-petalB" cx="45%" cy="38%" r="58%"><stop offset="0%" stopColor="var(--c-rosy)"/><stop offset="100%" stopColor="var(--c-roseDeep)" stopOpacity="0.4"/></radialGradient>
-                </defs>
-                <ellipse cx="22" cy="28" rx="6" ry="3.5" fill="url(#alarm-petalA)" transform="rotate(-25 22 28)"/>
-                <ellipse cx="78" cy="22" rx="5" ry="3" fill="url(#alarm-petalB)" transform="rotate(15 78 22)"/>
-                <ellipse cx="82" cy="72" rx="5.5" ry="3" fill="url(#alarm-petalA)" transform="rotate(35 82 72)"/>
-                <ellipse cx="18" cy="78" rx="4" ry="2.5" fill="url(#alarm-petalB)" transform="rotate(-12 18 78)"/>
-              </svg>
-            </div>
-            {/* radial glow */}
-            <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 65% 55% at 50% 60%, color-mix(in srgb, var(--c-rosy) 10%, transparent), transparent)', pointerEvents:'none' }}/>
+            <AlarmHeroDecor />
 
             <AnimatePresence mode="wait">
               {alarmStr ? (
@@ -1621,18 +2064,16 @@ export default function App() {
             </AnimatePresence>
           </motion.div>
 
-          {/* ── Timeline ── */}
+          {/* ── Timeline：高度随节点多少伸缩，多节点时内部滚动（避免 Safari 裁切） ── */}
           <div
             data-skin-card="1"
             style={{
-            flex:1, minHeight:0,
-            background:'rgba(228,213,183,0.03)',
-            backdropFilter:'blur(8px)',
-            border:'1px solid rgba(228,213,183,0.08)',
-            borderRadius:18,
+            flex: '0 1 auto',
+            minHeight: 0,
             padding:'8px 10px 10px',
             display:'flex', flexDirection:'column',
             overflow:'hidden',
+            ...liquidGlassPrimaryCard(18),
           }}>
             <div style={{
               display:'flex',
@@ -1661,19 +2102,31 @@ export default function App() {
                   border:'1px solid rgba(228,213,183,0.09)',
                   background:'rgba(10,20,20,0.35)',
                   color:'rgba(228,213,183,0.82)',
-                  fontSize:9,
-                  letterSpacing:'0.16em',
-                  textTransform:'uppercase',
+                  fontSize:10,
+                  letterSpacing:'0.06em',
+                  textTransform:'none',
                   fontFamily: "'Jost', sans-serif",
                   cursor:'pointer',
                 }}
               >
                 <Settings size={11} strokeWidth={1.5}/>
-                MY RITUAL
+                My Ritual
               </button>
             </div>
 
-            <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column', justifyContent:'space-between', gap:0, paddingBottom:4 }}>
+            <div
+              style={{
+                overflowY: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                overscrollBehavior: 'contain',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                paddingBottom: 6,
+                maxHeight:
+                  'min(68dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 200px))',
+              }}
+            >
               {journeyNodes.map((node, index) => {
                 const time    = times?.[node.id];
                 const diff    = getDiff(node.id);
@@ -1869,32 +2322,51 @@ export default function App() {
               <motion.div
                 key="scrim"
                 initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+                transition={{ duration: 0.2 }}
                 onClick={() => setSettingsOpen(false)}
                 style={{
                   position:'fixed', inset:0, zIndex:50,
-                  background:'rgba(5,15,15,0.6)', backdropFilter:'blur(4px)',
-                  WebkitBackdropFilter:'blur(4px)',
+                  background:'rgba(5,15,15,0.62)',
                 }}
               />
               <motion.div
                 key="drawer"
+                layout={false}
                 initial={{ y:'100%' }}
                 animate={{ y:0 }}
                 exit={{ y:'100%' }}
-                transition={{ type:'spring', damping:28, stiffness:300 }}
+                transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
                 style={{
                   position:'fixed', bottom:0, left:0, right:0, zIndex:51,
                   borderRadius:'24px 24px 0 0',
-                  background:'linear-gradient(180deg, color-mix(in srgb, var(--c-bg-152A2A) 98%, transparent) 0%, color-mix(in srgb, var(--c-midnight) 98%, transparent) 100%)',
-                  backdropFilter:'blur(12px)',
-                  WebkitBackdropFilter:'blur(12px)',
+                  background:'linear-gradient(180deg, color-mix(in srgb, var(--c-bg-152A2A) 99%, transparent) 0%, color-mix(in srgb, var(--c-midnight) 99.5%, transparent) 100%)',
                   border:'1px solid rgba(228,213,183,0.12)',
                   borderBottom:'none',
                   padding:'0 20px calc(22px + env(safe-area-inset-bottom, 0px))',
                   overflow:'hidden',
+                  maxHeight: 'min(88dvh, 640px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  isolation: 'isolate',
+                  touchAction: 'auto',
                 }}
               >
-                <div style={{ position:'relative', zIndex:1, paddingTop:16 }}>
+                {/* 置于滚动层之下，避免与胶囊叠层滚动时产生重影/撕裂 */}
+                <RitualDrawerMonetDecor />
+                <div
+                  style={{
+                    position: 'relative',
+                    zIndex: 1,
+                    paddingTop: 16,
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
+                    WebkitOverflowScrolling: 'touch',
+                    overscrollBehaviorY: 'contain',
+                    touchAction: 'pan-y',
+                  }}
+                >
                   {/* Handle */}
                   <div style={{ width:36, height:4, borderRadius:2, background:'rgba(228,213,183,0.18)', margin:'0 auto 14px' }}/>
 
@@ -1903,13 +2375,12 @@ export default function App() {
                     <div>
                       <div style={{
                         fontFamily:'Georgia, "Cormorant Garamond", serif',
-                        fontStyle:'italic',
-                        fontWeight:400,
+                        fontWeight:500,
                         fontSize:22,
                         color:C.beige,
                         lineHeight:1.15,
-                      }}>MY RITUAL</div>
-                      <div style={{ fontSize:11, color:C.moss, letterSpacing:'0.12em', marginTop:4 }}>your defaults, your pace.</div>
+                      }}>My Ritual</div>
+                      <div style={{ fontSize:11, color:C.moss, letterSpacing:'0.12em', marginTop:4 }}>my defaults, my pace.</div>
                     </div>
                     <button
                       type="button"
@@ -1924,184 +2395,15 @@ export default function App() {
                     ><X size={14}/></button>
                   </div>
 
-                  {/* Duration rows：仅副标题；齿轮 = 从行程中移除此段（可恢复） */}
-                  {(() => {
-                    const ritualVisible = RITUAL_ROWS.filter(
-                      (row) => !ritualSkipped.includes(row.key) && !(isPink && row.key === 'linger'),
-                    );
-                    const ritualHidden = RITUAL_ROWS.filter(
-                      (row) => ritualSkipped.includes(row.key) && !(isPink && row.key === 'linger'),
-                    );
-                    const rowDivider = '0.5px solid rgba(201, 169, 110, 0.15)';
-                    const showHidden = ritualHidden.length > 0;
-                    const rowBtn: React.CSSProperties = {
-                      background: 'rgba(228,213,183,0.07)',
-                      border: '1px solid rgba(228,213,183,0.1)',
-                      borderRadius: '50%',
-                      width: 30,
-                      height: 30,
-                      color: C.beige,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    };
-                    const ritualDurBtn: React.CSSProperties = {
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      border: `1px solid color-mix(in srgb, ${C.rosy} 55%, transparent)`,
-                      background: 'transparent',
-                      color: C.rosy,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 16,
-                      lineHeight: 1,
-                      padding: 0,
-                      flexShrink: 0,
-                    };
-                    return (
-                      <>
-                        {ritualVisible.map((item, i, arr) => (
-                          <div
-                            key={item.key}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 12,
-                              boxSizing: 'border-box',
-                              minHeight: 64,
-                              borderBottom:
-                                i < arr.length - 1 || showHidden ? rowDivider : 'none',
-                              padding: '0 2px',
-                            }}
-                          >
-                            <button
-                              type="button"
-                              aria-label="Remove from journey"
-                              title="Remove from journey"
-                              onClick={() => toggleRitualSkip(item.key)}
-                              style={rowBtn}
-                            >
-                              <Settings2 size={15} strokeWidth={1.35} />
-                            </button>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div
-                                style={{
-                                  fontSize: 14,
-                                  color: 'rgba(228,213,183,0.92)',
-                                  lineHeight: 1.3,
-                                  fontFamily: 'Georgia, "Cormorant Garamond", serif',
-                                  fontStyle: 'italic',
-                                }}
-                              >
-                                {item.sub}
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <button
-                                type="button"
-                                onClick={() => adjustDuration(item.key, -5)}
-                                style={ritualDurBtn}
-                              >
-                                −
-                              </button>
-                              <span
-                                style={{
-                                  fontFamily: '"Cormorant Garamond", Georgia, serif',
-                                  fontSize: 16,
-                                  color: C.rosy,
-                                  minWidth: 40,
-                                  textAlign: 'center',
-                                }}
-                              >
-                                {durations[item.key]}m
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => adjustDuration(item.key, +5)}
-                                style={ritualDurBtn}
-                              >
-                                +
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        {showHidden && (
-                          <div style={{ marginTop: 16 }}>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                color: C.moss,
-                                letterSpacing: '0.15em',
-                                marginTop: 14,
-                                marginBottom: 12,
-                                textTransform: 'uppercase',
-                                fontFamily: "'Jost', sans-serif",
-                              }}
-                            >
-                              NOT IN THIS JOURNEY
-                            </div>
-                            {ritualHidden.map((item, hi) => (
-                              <div
-                                key={item.key}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: 12,
-                                  boxSizing: 'border-box',
-                                  minHeight: 64,
-                                  borderBottom: hi < ritualHidden.length - 1 ? rowDivider : 'none',
-                                  padding: '0 2px',
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    fontSize: 13,
-                                    color: 'rgba(228,213,183,0.58)',
-                                    fontFamily: 'Georgia, "Cormorant Garamond", serif',
-                                    fontStyle: 'italic',
-                                    lineHeight: 1.3,
-                                    flex: 1,
-                                    minWidth: 0,
-                                  }}
-                                >
-                                  {item.sub}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="ritual-restore-link"
-                                  onClick={() => toggleRitualSkip(item.key)}
-                                >
-                                  Restore
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
+                  <RitualDrawerDurationSection
+                    isPink={isPink}
+                    ritualSkipped={ritualSkipped}
+                    durations={durations}
+                    notInJourneyGlass={notInJourneyGlass}
+                    onToggleSkip={toggleRitualSkip}
+                    onAdjustDuration={adjustDuration}
+                  />
                 </div>
-                <img
-                  src="/ritual_reed_right.svg"
-                  alt=""
-                  aria-hidden
-                  style={{
-                    position:'absolute',
-                    right:0,
-                    bottom:'calc(12px + env(safe-area-inset-bottom, 0px))',
-                    width:100,
-                    height:'auto',
-                    opacity:0.3,
-                    pointerEvents:'none',
-                    zIndex:2,
-                  }}
-                />
               </motion.div>
             </>
           )}
@@ -2148,9 +2450,11 @@ export default function App() {
                   WebkitBackdropFilter: 'blur(12px)',
                   border: '1px solid rgba(228,213,183,0.12)',
                   borderBottom: 'none',
-                  padding: '16px 20px calc(22px + env(safe-area-inset-bottom, 0px))',
+                  padding: '0 20px calc(22px + env(safe-area-inset-bottom, 0px))',
+                  overflow: 'hidden',
                 }}
               >
+                <div style={{ position: 'relative', zIndex: 1, paddingTop: 16, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                 <div
                   style={{
                     width: 36,
@@ -2165,34 +2469,24 @@ export default function App() {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'flex-start',
-                    marginBottom: 12,
+                    marginBottom: 16,
                     flexShrink: 0,
                   }}
                 >
                   <div>
                     <div
                       style={{
-                        fontFamily: '"Cormorant Garamond", Georgia, serif',
-                        fontStyle: 'italic',
-                        fontWeight: 300,
+                        fontFamily: 'Georgia, "Cormorant Garamond", serif',
+                        fontWeight: 500,
                         fontSize: 22,
                         color: C.beige,
-                        lineHeight: 1.1,
+                        lineHeight: 1.15,
                       }}
                     >
-                      Flight log
+                      Flight Log
                     </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: C.moss,
-                        letterSpacing: '0.1em',
-                        marginTop: 4,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      Journeys where you tapped <i>now</i> on every step. Comfort tag = how close your
-                      rhythm was to My Ritual (avg. of each step&apos;s drift).
+                    <div style={{ fontSize: 11, color: C.moss, letterSpacing: '0.12em', marginTop: 4 }}>
+                      Each comfort tag summarizes drift from My Ritual.
                     </div>
                   </div>
                   <button
@@ -2235,15 +2529,15 @@ export default function App() {
                         padding: '12px 0 8px',
                       }}
                     >
-                      Nothing here yet — finish The Journey (every checkpoint) once, and this log will
-                      hold that flight with a little comfort label.
+                      nothing here yet — finish The Journey once (every checkpoint), and this list will
+                      keep that flight with a comfort tag.
                     </div>
                   ) : (
                     flightHistory.map((h) => (
                       <div
                         key={h.id}
                         style={{
-                          padding: '12px 0',
+                          padding: '10px 0',
                           borderBottom: '1px solid rgba(228,213,183,0.06)',
                         }}
                       >
@@ -2251,61 +2545,96 @@ export default function App() {
                           style={{
                             display: 'flex',
                             justifyContent: 'space-between',
-                            alignItems: 'baseline',
+                            alignItems: 'center',
                             gap: 10,
-                            marginBottom: 4,
+                            marginBottom: 3,
                           }}
                         >
-                          <span
+                          <div
                             style={{
-                              fontFamily: '"Cormorant Garamond", Georgia, serif',
-                              fontSize: 17,
-                              color: C.beige,
-                              letterSpacing: '0.04em',
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              alignItems: 'center',
+                              gap: '6px 10px',
+                              flex: 1,
+                              minWidth: 0,
                             }}
                           >
-                            {h.flightNo}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: 10,
-                              color: C.moss,
-                              letterSpacing: '0.08em',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {format(parseFlightDate(h.flightDate), 'MMM d, yyyy', { locale: enUS })}
-                          </span>
+                            <span
+                              style={{
+                                fontFamily: '"Cormorant Garamond", Georgia, serif',
+                                fontSize: 17,
+                                color: C.beige,
+                                letterSpacing: '0.04em',
+                              }}
+                            >
+                              {h.flightNo}
+                            </span>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                fontSize: 10,
+                                fontFamily: '"Cormorant Garamond", serif',
+                                fontStyle: 'italic',
+                                color: C.rosy,
+                                letterSpacing: '0.03em',
+                                background: 'color-mix(in srgb, var(--c-rosy) 12%, transparent)',
+                                border: '1px solid color-mix(in srgb, var(--c-rosy) 22%, transparent)',
+                                borderRadius: 999,
+                                padding: '2px 8px',
+                                lineHeight: 1.35,
+                              }}
+                            >
+                              {h.comfortTag}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                color: C.moss,
+                                letterSpacing: '0.08em',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {format(parseFlightDate(h.depDateYmd ?? h.flightDate), 'MMM d, yyyy', { locale: enUS })}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label="删除此条记录"
+                              onClick={() => removeFlightHistoryEntry(h.id)}
+                              style={{
+                                background: 'rgba(228,213,183,0.07)',
+                                border: '1px solid rgba(228,213,183,0.1)',
+                                borderRadius: '50%',
+                                width: 28,
+                                height: 28,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                color: C.moss,
+                                flexShrink: 0,
+                              }}
+                            >
+                              <X size={14} strokeWidth={2} />
+                            </button>
+                          </div>
                         </div>
                         <div
                           style={{
                             fontSize: 11,
                             color: 'rgba(228,213,183,0.78)',
                             letterSpacing: '0.06em',
-                            marginBottom: 6,
+                            lineHeight: 1.35,
                           }}
                         >
                           {h.origin} → {h.dest} · dep {h.depTime}
                         </div>
-                        <div
-                          style={{
-                            display: 'inline-block',
-                            fontSize: 11,
-                            fontFamily: '"Cormorant Garamond", serif',
-                            fontStyle: 'italic',
-                            color: C.rosy,
-                            letterSpacing: '0.04em',
-                            background: 'color-mix(in srgb, var(--c-rosy) 12%, transparent)',
-                            border: '1px solid color-mix(in srgb, var(--c-rosy) 22%, transparent)',
-                            borderRadius: 999,
-                            padding: '3px 10px',
-                          }}
-                        >
-                          {h.comfortTag}
-                        </div>
                       </div>
                     ))
                   )}
+                </div>
                 </div>
               </motion.div>
             </>
@@ -2342,7 +2671,16 @@ export default function App() {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <span style={{ fontFamily: '"Cormorant Garamond", serif', fontSize: 18, color: C.beige, fontStyle: 'italic' }}>EDIT PROFILE</span>
+                  <span
+                    style={{
+                      fontFamily: 'Georgia, "Cormorant Garamond", serif',
+                      fontSize: 18,
+                      fontWeight: 500,
+                      color: C.beige,
+                    }}
+                  >
+                    Edit Profile
+                  </span>
                   <button
                     type="button"
                     onClick={() => setProfileEditOpen(false)}
