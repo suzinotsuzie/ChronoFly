@@ -59,6 +59,41 @@ const C = {
   rosy:     'var(--c-rosy)',
 };
 
+/** Flight log：相对起飞早/晚，线稿图标（衬线字体 capsule 内 emoji 常不显示） */
+function IconMoodBeforeDep({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.35" />
+      <circle cx="8.5" cy="9.5" r="1" fill="currentColor" />
+      <circle cx="15.5" cy="9.5" r="1" fill="currentColor" />
+      <path
+        d="M8 14.5c1.6 2.2 4.6 2.2 8 0"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
+function IconMoodAfterDep({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.35" />
+      <circle cx="8.5" cy="9.5" r="1" fill="currentColor" />
+      <circle cx="15.5" cy="9.5" r="1" fill="currentColor" />
+      <path
+        d="M8 17.5c1.6-2.2 4.6-2.2 8 0"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
 /**
  * 一级页主卡片与抽屉内玻璃；`light` 用于「Not in this journey」等嵌套块。
  * `drawerNested`：关闭 backdrop-filter，避免抽屉内再叠一层实时模糊（移动端易卡顿）。
@@ -255,8 +290,52 @@ type FlightHistoryEntry = {
   dest: string;
   depTime: string;
   comfortTag: string;
+  /** 末档打卡相对计划起飞：不晚于 ok，晚于 late（独立字段，避免与文字标签混排） */
+  depRel?: 'ok' | 'late';
   savedAt: number;
 };
+
+type DepRelMood = 'ok' | 'late';
+
+/** 剥离曾拼在 comfortTag 后的 emoji，并尽量恢复 depRel */
+function stripComfortTagSuffixMood(tag: string): { tag: string; mood?: DepRelMood } {
+  let t = tag.trimEnd();
+  const suffixes: { re: RegExp; mood: DepRelMood }[] = [
+    { re: /\s*🙂\s*$/u, mood: 'ok' },
+    { re: /\s*🙁\s*$/u, mood: 'late' },
+    { re: /\s*☹️\s*$/u, mood: 'late' },
+    { re: /\s*😊\s*$/u, mood: 'ok' },
+  ];
+  for (const { re, mood } of suffixes) {
+    if (re.test(t)) {
+      t = t.replace(re, '').trimEnd();
+      return { tag: t, mood };
+    }
+  }
+  return { tag: t };
+}
+
+function normalizeFlightHistoryEntry(raw: unknown): FlightHistoryEntry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const e = raw as Record<string, unknown>;
+  if (typeof e.flightNo !== 'string' || typeof e.comfortTag !== 'string') return null;
+  const stripped = stripComfortTagSuffixMood(e.comfortTag);
+  const depRelRaw = e.depRel;
+  const depRel: DepRelMood | undefined =
+    depRelRaw === 'ok' || depRelRaw === 'late' ? depRelRaw : stripped.mood;
+  return {
+    id: typeof e.id === 'string' ? e.id : `${e.flightNo}_${Date.now()}`,
+    flightNo: e.flightNo,
+    flightDate: typeof e.flightDate === 'string' ? e.flightDate : '',
+    depDateYmd: typeof e.depDateYmd === 'string' ? e.depDateYmd : undefined,
+    origin: typeof e.origin === 'string' ? e.origin : '—',
+    dest: typeof e.dest === 'string' ? e.dest : '—',
+    depTime: typeof e.depTime === 'string' ? e.depTime : '',
+    comfortTag: stripped.tag,
+    ...(depRel ? { depRel } : {}),
+    savedAt: typeof e.savedAt === 'number' ? e.savedAt : 0,
+  };
+}
 
 function loadFlightHistory(): FlightHistoryEntry[] {
   if (typeof window === 'undefined') return [];
@@ -266,13 +345,8 @@ function loadFlightHistory(): FlightHistoryEntry[] {
     const p = JSON.parse(raw) as unknown;
     if (!Array.isArray(p)) return [];
     return p
-      .filter(
-        (e): e is FlightHistoryEntry =>
-          e &&
-          typeof e === 'object' &&
-          typeof (e as FlightHistoryEntry).flightNo === 'string' &&
-          typeof (e as FlightHistoryEntry).comfortTag === 'string',
-      )
+      .map((item) => normalizeFlightHistoryEntry(item))
+      .filter((e): e is FlightHistoryEntry => e !== null)
       .slice(0, 80);
   } catch {
     return [];
@@ -391,6 +465,141 @@ function airportsOnlyFromRow(row: AviationFlightApiRow | undefined): { origin: s
   return { origin: origin || '—', dest: dest || '—' };
 }
 
+/** 飞常准 MCP 网关等扁平字段 */
+function pickStr(obj: Record<string, unknown>, ...keys: string[]): string {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return '';
+}
+
+function unwrapFirstFlightRecord(data: unknown): unknown {
+  if (data == null) return undefined;
+  if (Array.isArray(data)) return data[0];
+  if (typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (Array.isArray(o.list)) return o.list[0];
+    if (Array.isArray(o.flights)) return o.flights[0];
+    if (Array.isArray(o.result)) return o.result[0];
+    return data;
+  }
+  return undefined;
+}
+
+function normalizeScheduledInput(raw: string): string {
+  const s = raw.trim();
+  if (/^\d{14}$/.test(s)) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10)}:${s.slice(10, 12)}:${s.slice(12, 14)}`;
+  }
+  if (/^\d{12}$/.test(s)) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(8, 10)}:${s.slice(10, 12)}:00`;
+  }
+  if (/^\d{8}$/.test(s)) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T00:00:00`;
+  }
+  if (s.includes(' ') && !s.includes('T')) return s.replace(' ', 'T');
+  return s;
+}
+
+function parseVariflightFlatRow(r: Record<string, unknown>, _fallbackDateYmd: string): FlightApiSnapshot | null {
+  const plan = pickStr(
+    r,
+    'FlightDeptimePlanDate',
+    'flightDeptimePlanDate',
+    'FlightDeptimeDate',
+    'schDepTime',
+    'std',
+    'depScheduled',
+    'SchDepTime',
+  );
+  if (!plan) return null;
+  const scheduledNorm = normalizeScheduledInput(plan);
+  const local = depLocalFromScheduled(scheduledNorm, null);
+  let depHHMM: string;
+  let depDateYmd: string;
+  if (local) {
+    depHHMM = local.hhmm;
+    depDateYmd = local.ymd;
+  } else {
+    const m = scheduledNorm.match(/(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/);
+    if (!m) return null;
+    depDateYmd = m[1];
+    depHHMM = `${m[2]}:${m[3]}`;
+  }
+  const depCode = pickStr(r, 'FlightDepcode', 'FlightDepCode', 'flightDepcode', 'DepCode', 'depCode', 'DepAirport');
+  const arrCode = pickStr(r, 'FlightArrcode', 'FlightArrCode', 'flightArrcode', 'ArrCode', 'arrCode', 'ArrAirport');
+  const cityDep = pickStr(r, 'FlightDep', 'flightDep', 'DepName', 'depName');
+  const cityArr = pickStr(r, 'FlightArr', 'flightArr', 'ArrName', 'arrName');
+  const origin = depCode || cityDep || '—';
+  const dest = arrCode || cityArr || '—';
+  return {
+    depHHMM,
+    origin,
+    dest,
+    depDateYmd,
+    scheduledRaw: plan,
+    depTimezone: '',
+  };
+}
+
+function parseUnifiedFlightRecord(row: unknown, fallbackDateYmd: string): FlightApiSnapshot | null {
+  if (!row || typeof row !== 'object') return null;
+  const r = row as Record<string, unknown>;
+  const dep = r.departure;
+  if (dep && typeof dep === 'object' && 'scheduled' in dep) {
+    return parseAviationFlightRow(row as AviationFlightApiRow, fallbackDateYmd);
+  }
+  return parseVariflightFlatRow(r, fallbackDateYmd);
+}
+
+function unifiedAirportsOnlyFromFlat(row: unknown): { origin: string; dest: string } | null {
+  if (!row || typeof row !== 'object') return null;
+  const r = row as Record<string, unknown>;
+  const origin =
+    pickStr(r, 'FlightDepcode', 'FlightDepCode', 'flightDepcode', 'DepCode', 'FlightDep', 'flightDep', 'dep') || '';
+  const dest =
+    pickStr(r, 'FlightArrcode', 'FlightArrCode', 'flightArrcode', 'ArrCode', 'FlightArr', 'flightArr', 'arr') || '';
+  if (!origin && !dest) return null;
+  return { origin: origin || '—', dest: dest || '—' };
+}
+
+/** 飞常准 MCP 包络 `{ code, data, request_id }` 或 AviationStack `{ data: [] }` */
+function parseFlightLookupEnvelope(
+  json: unknown,
+  fallbackDateYmd: string,
+): {
+  snap: FlightApiSnapshot | null;
+  airportsOnly: { origin: string; dest: string } | null;
+} {
+  if (!json || typeof json !== 'object') return { snap: null, airportsOnly: null };
+  const root = json as Record<string, unknown>;
+
+  if ('request_id' in root && 'code' in root) {
+    const code = Number(root.code);
+    if (code !== 200) return { snap: null, airportsOnly: null };
+    const row = unwrapFirstFlightRecord(root.data);
+    const snap = parseUnifiedFlightRecord(row, fallbackDateYmd);
+    if (snap) return { snap, airportsOnly: null };
+    const ap = unifiedAirportsOnlyFromFlat(row);
+    return { snap: null, airportsOnly: ap };
+  }
+
+  const data = root.data;
+  if (Array.isArray(data)) {
+    const row = data[0];
+    const snap = parseUnifiedFlightRecord(row, fallbackDateYmd);
+    if (snap) return { snap, airportsOnly: null };
+    const ap =
+      row && typeof row === 'object' && 'departure' in row
+        ? airportsOnlyFromRow(row as AviationFlightApiRow)
+        : unifiedAirportsOnlyFromFlat(row);
+    return { snap: null, airportsOnly: ap };
+  }
+
+  return { snap: null, airportsOnly: null };
+}
+
 // ── Time helpers ──────────────────────────────────────────────────────────
 function toMin(t: string): number {
   const [h, m] = t.split(':').map(Number);
@@ -448,6 +657,31 @@ function computeMeanAbsDiff(
     n += 1;
   }
   return n > 0 ? sum / n : 0;
+}
+
+/**
+ * 行程「最后一档」实际打卡 vs 计划起飞（depStr）：不晚于起飞 ok，晚于 late。
+ * 与 comfort tag（My Ritual 偏差）独立；跨日用 ±12h 粗归一。
+ */
+function departureRelMood(
+  depStr: string,
+  journeyNodeIds: string[],
+  stamps: Record<string, string>,
+  times: Record<string, number>,
+): DepRelMood | null {
+  if (journeyNodeIds.length === 0) return null;
+  const lastId = journeyNodeIds[journeyNodeIds.length - 1];
+  const st = stamps[lastId];
+  if (!st) return null;
+  const wakeMin = times.wake;
+  const boardMin = times.board;
+  const raw = toMin(st);
+  const actual = alignActualToJourneyWindow(raw, wakeMin, boardMin);
+  const depMin = toMin(depStr);
+  let slack = depMin - actual;
+  if (slack < -720) slack += 1440;
+  else if (slack > 720) slack -= 1440;
+  return slack >= 0 ? 'ok' : 'late';
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1320,7 +1554,7 @@ export default function App() {
     }
   }, [flightHistory]);
 
-  /** The Journey 每一档都点了 now 后写入一条历史（舒适标签 = 各节点 |实际−计划| 的平均分钟数分档） */
+  /** The Journey 每一档都点了 now 后写入一条历史（舒适标签 = 各节点 |实际−计划| 平均分档；depRel = 末档 vs 起飞） */
   useEffect(() => {
     if (!submitted || !flightDate || !depStr || !times) return;
     const ids = journeyNodeIds;
@@ -1334,7 +1568,8 @@ export default function App() {
     journeyHistorySigRef.current = sig;
 
     const meanAbs = computeMeanAbsDiff(ids, stamps, times);
-    const tag = comfortTagFromMeanAbs(meanAbs);
+    const comfortTag = comfortTagFromMeanAbs(meanAbs);
+    const depRel = departureRelMood(depStr, ids, stamps, times);
     const depYmd = flightApiSnapshot?.depDateYmd ?? flightDate;
     const entry: FlightHistoryEntry = {
       id: `${submitted}_${flightDate}_${Date.now()}`,
@@ -1344,7 +1579,8 @@ export default function App() {
       origin: flightOrigin.trim() || '—',
       dest: flightDest.trim() || '—',
       depTime: depStr,
-      comfortTag: tag,
+      comfortTag,
+      ...(depRel ? { depRel } : {}),
       savedAt: Date.now(),
     };
     setFlightHistory((prev) =>
@@ -1391,9 +1627,8 @@ export default function App() {
     setFlightLoading(true);
     fetch(`/api/flight?flightNo=${encodeURIComponent(val)}&flight_date=${encodeURIComponent(flightDate)}`)
       .then((r) => r.json())
-      .then((json: { data?: AviationFlightApiRow[] }) => {
-        const row = json?.data?.[0];
-        const snap = parseAviationFlightRow(row, flightDate);
+      .then((json: unknown) => {
+        const { snap, airportsOnly } = parseFlightLookupEnvelope(json, flightDate);
         if (snap) {
           setFlightDepStr(snap.depHHMM);
           setFlightOrigin(snap.origin);
@@ -1405,10 +1640,9 @@ export default function App() {
           }
         } else {
           setFlightApiSnapshot(null);
-          const ap = airportsOnlyFromRow(row);
-          if (ap) {
-            setFlightOrigin(ap.origin);
-            setFlightDest(ap.dest);
+          if (airportsOnly) {
+            setFlightOrigin(airportsOnly.origin);
+            setFlightDest(airportsOnly.dest);
           }
         }
       })
@@ -2578,20 +2812,55 @@ export default function App() {
                             </span>
                             <span
                               style={{
-                                display: 'inline-block',
-                                fontSize: 10,
-                                fontFamily: '"Cormorant Garamond", serif',
-                                fontStyle: 'italic',
-                                color: C.rosy,
-                                letterSpacing: '0.03em',
-                                background: 'color-mix(in srgb, var(--c-rosy) 12%, transparent)',
-                                border: '1px solid color-mix(in srgb, var(--c-rosy) 22%, transparent)',
-                                borderRadius: 999,
-                                padding: '2px 8px',
-                                lineHeight: 1.35,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                flexShrink: 0,
                               }}
                             >
-                              {h.comfortTag}
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  fontSize: 10,
+                                  fontFamily: '"Cormorant Garamond", serif',
+                                  fontStyle: 'italic',
+                                  color: C.rosy,
+                                  letterSpacing: '0.03em',
+                                  background: 'color-mix(in srgb, var(--c-rosy) 12%, transparent)',
+                                  border: '1px solid color-mix(in srgb, var(--c-rosy) 22%, transparent)',
+                                  borderRadius: 999,
+                                  padding: '2px 8px',
+                                  lineHeight: 1.35,
+                                }}
+                              >
+                                {h.comfortTag}
+                              </span>
+                              {h.depRel === 'ok' && (
+                                <span
+                                  style={{
+                                    color: C.beige,
+                                    opacity: 0.9,
+                                    display: 'flex',
+                                    lineHeight: 0,
+                                  }}
+                                  title="Last checkpoint on or before scheduled departure"
+                                >
+                                  <IconMoodBeforeDep size={15} />
+                                </span>
+                              )}
+                              {h.depRel === 'late' && (
+                                <span
+                                  style={{
+                                    color: C.beige,
+                                    opacity: 0.9,
+                                    display: 'flex',
+                                    lineHeight: 0,
+                                  }}
+                                  title="Last checkpoint after scheduled departure"
+                                >
+                                  <IconMoodAfterDep size={15} />
+                                </span>
+                              )}
                             </span>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
