@@ -1,7 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, X, Plus, Minus, ChevronDown, CalendarIcon, ChevronLeft, ChevronRight, History, Trash2 } from 'lucide-react';
+import {
+  Settings,
+  X,
+  Plus,
+  Minus,
+  ChevronDown,
+  CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  History,
+  Trash2,
+  MapPin,
+} from 'lucide-react';
 import { DayPicker, CaptionLabel } from 'react-day-picker';
 import { format, parse, addMonths } from 'date-fns';
 import { enUS } from 'date-fns/locale';
@@ -72,6 +84,66 @@ function IconMoodBeforeDep({ size = 15 }: { size?: number }) {
         strokeWidth="1.35"
         strokeLinecap="round"
         fill="none"
+      />
+    </svg>
+  );
+}
+
+/** 悬浮白球内天气动效槽（略小于球径） */
+const WEATHER_FLOAT_ICON_BOX = 18;
+/** 半透明白球直径（px） */
+const WEATHER_FLOAT_BALL_PX = 42;
+/** 天气文案下划线比球直径略长（单侧各伸出 px） */
+const WEATHER_FLOAT_LINE_EXTRA_PX = 6;
+const WEATHER_FLOAT_POS_KEY = 'chrono_weather_float_pos';
+
+function loadWeatherFloatPos(): { x: number; y: number } {
+  if (typeof window === 'undefined') return { x: 12, y: 100 };
+  try {
+    const raw = localStorage.getItem(WEATHER_FLOAT_POS_KEY);
+    if (raw) {
+      const j = JSON.parse(raw) as { x?: number; y?: number };
+      if (typeof j.x === 'number' && typeof j.y === 'number') return { x: j.x, y: j.y };
+    }
+  } catch {
+    // ignore
+  }
+  return { x: 10, y: Math.max(96, Math.round(window.innerHeight * 0.16)) };
+}
+
+function clampWeatherFloatPos(
+  p: { x: number; y: number },
+  boxW: number,
+  boxH: number,
+): { x: number; y: number } {
+  if (typeof window === 'undefined') return p;
+  const pad = 8;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const w = Math.max(120, boxW);
+  const h = Math.max(72, boxH);
+  return {
+    x: Math.max(pad, Math.min(p.x, vw - w - pad)),
+    y: Math.max(pad, Math.min(p.y, vh - h - pad)),
+  };
+}
+
+/** 左上角天气：雷暴闪电（单路径折线，避免小尺寸糊边） */
+function IconWeatherThunderBolt({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      style={{ display: 'block' }}
+    >
+      <path
+        d="M14.4 0.9 L5.6 13.4 h4.6 L6.9 23.1 17.4 12.1 h-4.2 L17.1 0.9 Z"
+        fill="currentColor"
+        fillOpacity={0.94}
       />
     </svg>
   );
@@ -260,6 +332,37 @@ function playNowSound(): void {
   tap(0.09, 720);
 }
 
+/** 天气提示音：仅轻提示，避免盖过原有动作音效 */
+function playWeatherCue(kind: WeatherKind): void {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  const t = ctx.currentTime + 0.02;
+  const g = ctx.createGain();
+  g.connect(ctx.destination);
+  g.gain.setValueAtTime(0, t);
+  const peak = kind === 'thunder' ? 0.015 : 0.024;
+  const dur = kind === 'thunder' ? 0.18 : 0.22;
+  g.gain.linearRampToValueAtTime(peak, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+  const o = ctx.createOscillator();
+  o.connect(g);
+  o.type = kind === 'thunder' ? 'triangle' : 'sine';
+  const f =
+    kind === 'sunny' ? 920 :
+    kind === 'rain' ? 540 :
+    kind === 'thunder' ? 130 :
+    kind === 'cloudy' ? 460 :
+    kind === 'snow' ? 760 :
+    kind === 'fog' ? 320 : 500;
+  o.frequency.setValueAtTime(f, t);
+  if (kind === 'thunder') {
+    o.frequency.exponentialRampToValueAtTime(95, t + dur);
+  }
+  o.start(t);
+  o.stop(t + dur);
+}
+
 // ── Mock departure database ───────────────────────────────────────────────
 const MOCK_FLIGHTS: Record<string, string> = {
   MU1259: '12:00',
@@ -296,6 +399,501 @@ type FlightHistoryEntry = {
 };
 
 type DepRelMood = 'ok' | 'late';
+type WeatherKind = 'sunny' | 'rain' | 'thunder' | 'cloudy' | 'snow' | 'fog' | 'unknown';
+type WeatherFx = {
+  kind: WeatherKind;
+  label: string;
+  location?: string;
+  tempC?: number;
+  isDay?: boolean;
+};
+const WEATHER_MOCK_CYCLE: Array<WeatherKind | 'off'> = ['sunny', 'rain', 'thunder', 'cloudy', 'fog', 'snow', 'off'];
+
+/** 调试天气 mock：用真实城市名展示，不出现 “mock” 字样 */
+const WEATHER_MOCK_CITY: Record<WeatherKind, string> = {
+  sunny: 'Kunming',
+  rain: 'Seattle',
+  thunder: 'Miami',
+  cloudy: 'Vancouver',
+  fog: 'London',
+  snow: 'Sapporo',
+  unknown: 'Paris',
+};
+
+function isWeatherKind(v: unknown): v is WeatherKind {
+  return v === 'sunny' || v === 'rain' || v === 'thunder' || v === 'cloudy' || v === 'snow' || v === 'fog' || v === 'unknown';
+}
+
+function mapOpenMeteoCodeToWeather(code: number): WeatherKind {
+  if ([95, 96, 99].includes(code)) return 'thunder';
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'rain';
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return 'snow';
+  if ([45, 48].includes(code)) return 'fog';
+  if ([0].includes(code)) return 'sunny';
+  if ([1, 2, 3].includes(code)) return 'cloudy';
+  return 'unknown';
+}
+
+function weatherLabel(kind: WeatherKind, isDay?: boolean): string {
+  switch (kind) {
+    case 'sunny': return isDay ? 'Sunny' : 'Clear night';
+    case 'rain': return 'Rainy';
+    case 'thunder': return 'Thunder';
+    case 'cloudy': return 'Cloudy';
+    case 'snow': return 'Snowy';
+    case 'fog': return 'Foggy';
+    default: return 'Weather';
+  }
+}
+
+/** 航班卡左侧天气槽动效（与闹钟区逻辑一致，尺寸适配窄列） */
+function WeatherIconSlot({ kind }: { kind: WeatherKind }) {
+  return (
+    <>
+      {kind === 'sunny' && (
+        <motion.div
+          animate={{ scale: [0.92, 1.08, 0.92], opacity: [0.45, 0.9, 0.45] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: '50%',
+            background: 'rgba(228,213,183,0.92)',
+            boxShadow: '0 0 8px rgba(228,213,183,0.48)',
+          }}
+        />
+      )}
+      {kind === 'rain' && (
+        <div style={{ position: 'relative', width: 18, height: 11 }}>
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={`fcw_rain_${i}`}
+              initial={{ y: -1, opacity: 0 }}
+              animate={{ y: [0, 7], opacity: [0.1, 0.8, 0] }}
+              transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.18, ease: 'linear' }}
+              style={{
+                position: 'absolute',
+                left: 1.5 + i * 5.5,
+                top: 0,
+                width: 1.4,
+                height: 4.5,
+                borderRadius: 99,
+                background: 'rgba(228,213,183,0.85)',
+              }}
+            />
+          ))}
+        </div>
+      )}
+      {kind === 'thunder' && (
+        <motion.span
+          animate={{ opacity: [0.35, 1, 0.45, 0.95, 0.35] }}
+          transition={{ duration: 1.25, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            color: 'rgba(228,213,183,0.95)',
+            filter: 'drop-shadow(0 0 3px rgba(228,213,183,0.35))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <IconWeatherThunderBolt size={15} />
+        </motion.span>
+      )}
+      {(kind === 'cloudy' || kind === 'fog' || kind === 'unknown') && (
+        <div style={{ position: 'relative', width: 18, height: 12 }}>
+          <motion.div
+            animate={{ x: [-1, 2, -1], opacity: [0.6, 0.92, 0.6] }}
+            transition={{ duration: 2.3, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 2,
+              width: 12,
+              height: 6,
+              borderRadius: 99,
+              background: 'rgba(228,213,183,0.78)',
+            }}
+          />
+          <motion.div
+            animate={{ x: [1, -2, 1], opacity: [0.35, 0.7, 0.35] }}
+            transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              position: 'absolute',
+              left: 4,
+              top: 7,
+              width: 11,
+              height: 4.5,
+              borderRadius: 99,
+              background: 'rgba(228,213,183,0.45)',
+            }}
+          />
+        </div>
+      )}
+      {kind === 'snow' && (
+        <div style={{ position: 'relative', width: 18, height: 11 }}>
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={`fcw_snow_${i}`}
+              animate={{ y: [0, 6], opacity: [0.2, 0.9, 0] }}
+              transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.25, ease: 'linear' }}
+              style={{
+                position: 'absolute',
+                left: 1.5 + i * 5.5,
+                top: 0,
+                width: 2.1,
+                height: 2.1,
+                borderRadius: '50%',
+                background: 'rgba(228,213,183,0.9)',
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function weatherFloatGlowTint(kind: WeatherKind): string {
+  switch (kind) {
+    case 'sunny':
+      return 'rgba(255, 224, 160, 0.58)';
+    case 'rain':
+      return 'rgba(170, 210, 255, 0.52)';
+    case 'thunder':
+      return 'rgba(210, 200, 255, 0.55)';
+    case 'snow':
+      return 'rgba(236, 244, 255, 0.56)';
+    case 'fog':
+    case 'cloudy':
+      return 'rgba(222, 230, 242, 0.48)';
+    default:
+      return 'rgba(255, 255, 255, 0.5)';
+  }
+}
+
+/** 点球：外扩柔光 + 亮环（保留光晕反馈，无粒子） */
+function WeatherFloatTapGlow({ kind, burstId }: { kind: WeatherKind; burstId: number }) {
+  if (burstId === 0) return null;
+  const tint = weatherFloatGlowTint(kind);
+  return (
+    <>
+      <motion.div
+        key={`glow-${burstId}`}
+        initial={{ opacity: 0.78, scale: 0.52 }}
+        animate={{ opacity: 0, scale: 2.12 }}
+        transition={{ duration: 0.78, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          width: '168%',
+          height: '168%',
+          marginLeft: '-84%',
+          marginTop: '-84%',
+          borderRadius: '50%',
+          pointerEvents: 'none',
+          zIndex: 0,
+          background: `radial-gradient(circle, ${tint} 0%, rgba(255,255,255,0.22) 30%, transparent 70%)`,
+          filter: 'blur(4px)',
+        }}
+      />
+      <motion.div
+        key={`ring-${burstId}`}
+        initial={{ opacity: 0.9, scale: 0.86 }}
+        animate={{ opacity: 0, scale: 1.82 }}
+        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          position: 'absolute',
+          inset: -3,
+          borderRadius: '50%',
+          pointerEvents: 'none',
+          zIndex: 1,
+          border: `2px solid rgba(255,255,255,0.62)`,
+          boxShadow: `0 0 18px 6px ${tint}, 0 0 6px 1px rgba(255,255,255,0.45)`,
+        }}
+      />
+    </>
+  );
+}
+
+/** 可拖动：半透明白球 + 下方天气/地点文案；点球放大并重播球内天气动效 + 音效 */
+function FloatingWeatherWidget({ fx }: { fx: WeatherFx & { location: string } }) {
+  const [pos, setPos] = useState(loadWeatherFloatPos);
+  const [burstId, setBurstId] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const ballRef = useRef<HTMLDivElement>(null);
+  const posRef = useRef(pos);
+  posRef.current = pos;
+  const dragRef = useRef<{ ox: number; oy: number; px: number; py: number; pid: number } | null>(null);
+
+  useEffect(() => {
+    const onResize = () => {
+      const el = rootRef.current;
+      const r = el?.getBoundingClientRect();
+      setPos((p) => {
+        const c = clampWeatherFloatPos(p, r?.width ?? 156, r?.height ?? 108);
+        try {
+          localStorage.setItem(WEATHER_FLOAT_POS_KEY, JSON.stringify(c));
+        } catch {
+          // ignore
+        }
+        return c;
+      });
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    const p = posRef.current;
+    dragRef.current = {
+      ox: p.x,
+      oy: p.y,
+      px: e.clientX,
+      py: e.clientY,
+      pid: e.pointerId,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.pid) return;
+    const el = rootRef.current;
+    const r = el?.getBoundingClientRect();
+    setPos(
+      clampWeatherFloatPos(
+        { x: d.ox + (e.clientX - d.px), y: d.oy + (e.clientY - d.py) },
+        r?.width ?? 156,
+        r?.height ?? 108,
+      ),
+    );
+  };
+
+  const endDrag = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (d && e.pointerId === d.pid) {
+      const dx = e.clientX - d.px;
+      const dy = e.clientY - d.py;
+      const tap = dx * dx + dy * dy < 100;
+
+      dragRef.current = null;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* released */
+      }
+      (e.currentTarget as HTMLElement).style.cursor = 'grab';
+
+      if (tap && ballRef.current) {
+        const t = e.target;
+        const topEl =
+          typeof document !== 'undefined' ? document.elementFromPoint(e.clientX, e.clientY) : null;
+        const onBall =
+          (t instanceof Node && ballRef.current.contains(t)) || (!!topEl && ballRef.current.contains(topEl));
+        if (onBall) {
+          setBurstId((n) => n + 1);
+          try {
+            playWeatherCue(fx.kind);
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      const el = rootRef.current;
+      const r = el?.getBoundingClientRect();
+      setPos((prev) => {
+        const c = clampWeatherFloatPos(prev, r?.width ?? 156, r?.height ?? 108);
+        try {
+          localStorage.setItem(WEATHER_FLOAT_POS_KEY, JSON.stringify(c));
+        } catch {
+          // ignore
+        }
+        return c;
+      });
+    }
+  };
+
+  const ballSize = WEATHER_FLOAT_BALL_PX;
+
+  return (
+    <div
+      ref={rootRef}
+      data-weather-float="1"
+      role="status"
+      aria-label={`Weather ${fx.label}. ${fx.location}. Drag to move; tap the orb to replay the weather animation.`}
+      style={{
+        position: 'fixed',
+        left: pos.x,
+        top: pos.y,
+        zIndex: 88,
+        width: 'max-content',
+        maxWidth: 'min(200px, calc(100vw - 20px))',
+        touchAction: 'none',
+        cursor: 'grab',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 8,
+        boxSizing: 'border-box',
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+    >
+      <div
+        ref={ballRef}
+        style={{
+          position: 'relative',
+          width: ballSize,
+          height: ballSize,
+          borderRadius: '50%',
+          flexShrink: 0,
+          cursor: 'pointer',
+          background: [
+            'radial-gradient(circle at 28% 22%, rgba(255,255,255,0.58) 0%, rgba(255,255,255,0.26) 36%, rgba(255,255,255,0.1) 58%, rgba(255,255,255,0.04) 78%, rgba(95,86,74,0.07) 100%)',
+            'radial-gradient(circle at 68% 72%, rgba(255,255,255,0.1) 0%, transparent 48%)',
+            'radial-gradient(ellipse 125% 85% at 50% 108%, rgba(45,40,34,0.14) 0%, transparent 52%)',
+          ].join(', '),
+          backdropFilter: 'blur(6px) saturate(1.42)',
+          WebkitBackdropFilter: 'blur(6px) saturate(1.42)',
+          border: '1px solid rgba(255,255,255,0.62)',
+          boxShadow: [
+            'inset 5px 8px 18px rgba(255,255,255,0.78)',
+            'inset -4px -6px 16px rgba(72,64,56,0.1)',
+            'inset 0 -10px 18px rgba(55,48,42,0.08)',
+            '0 10px 26px rgba(0,0,0,0.24)',
+            '0 4px 12px rgba(255,255,255,0.32)',
+            '0 0 22px rgba(255,255,255,0.16)',
+          ].join(', '),
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'visible',
+        }}
+      >
+        <WeatherFloatTapGlow kind={fx.kind} burstId={burstId} />
+        <motion.div
+          key={burstId}
+          initial={{ scale: 1 }}
+          animate={burstId === 0 ? { scale: 1 } : { scale: [1, 1.78, 1.28, 1] }}
+          transition={{
+            duration: 0.98,
+            times: [0, 0.22, 0.52, 1],
+            ease: [0.22, 1, 0.36, 1],
+          }}
+          style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            zIndex: 3,
+          }}
+        >
+          <div
+            key={burstId}
+            style={{
+              width: WEATHER_FLOAT_ICON_BOX,
+              height: WEATHER_FLOAT_ICON_BOX,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.5))',
+            }}
+          >
+            <WeatherIconSlot kind={fx.kind} />
+          </div>
+        </motion.div>
+      </div>
+
+      <div
+        style={{
+          width: '100%',
+          minWidth: Math.max(120, ballSize + 24),
+          maxWidth: 'min(200px, calc(100vw - 24px))',
+          padding: '0 2px',
+          boxSizing: 'border-box',
+        }}
+      >
+        <motion.div
+          animate={{ opacity: [0.78, 1, 0.78] }}
+          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr)',
+            rowGap: 3,
+            fontFamily: "'Jost', system-ui, sans-serif",
+            textAlign: 'center',
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              lineHeight: 1.25,
+              color: 'rgba(228,213,183,0.95)',
+              letterSpacing: '0.02em',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {fx.label}
+            {typeof fx.tempC === 'number' ? ` ${fx.tempC}°` : ''}
+          </span>
+          <div
+            style={{
+              height: 0,
+              borderBottom: '1px solid rgba(228,213,183,0.32)',
+              width: ballSize + WEATHER_FLOAT_LINE_EXTRA_PX * 2,
+              maxWidth: '100%',
+              margin: '0 auto',
+            }}
+          />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              minWidth: 0,
+              width: '100%',
+            }}
+          >
+            <MapPin
+              size={9}
+              strokeWidth={1.85}
+              aria-hidden
+              style={{ flexShrink: 0, color: 'rgba(228,213,183,0.88)' }}
+            />
+            <span
+              style={{
+                fontSize: 9,
+                lineHeight: 1.3,
+                fontWeight: 500,
+                color: 'rgba(228,213,183,0.88)',
+                letterSpacing: '0.02em',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                minWidth: 0,
+              }}
+            >
+              {fx.location}
+            </span>
+          </div>
+        </motion.div>
+      </div>
+    </div>
+  );
+}
 
 /** 剥离曾拼在 comfortTag 后的 emoji，并尽量恢复 depRel */
 function stripComfortTagSuffixMood(tag: string): { tag: string; mood?: DepRelMood } {
@@ -1284,6 +1882,17 @@ export default function App() {
   const [flightApiSnapshot, setFlightApiSnapshot] = useState<FlightApiSnapshot | null>(null);
   const [flightLoading, setFlightLoading] = useState(false);
   const [flightApiHint, setFlightApiHint] = useState('');
+  const [weatherFx, setWeatherFx] = useState<WeatherFx | null>(null);
+  const [weatherMockKind, setWeatherMockKind] = useState<WeatherKind | 'off'>(() => {
+    if (typeof window === 'undefined') return 'off';
+    try {
+      const raw = localStorage.getItem('chrono_weather_mock');
+      return isWeatherKind(raw) ? raw : 'off';
+    } catch {
+      return 'off';
+    }
+  });
+  const weatherCueKeyRef = useRef('');
   const [alarmSyncHint, setAlarmSyncHint] = useState('');
   const [flightDate, setFlightDate] = useState(() => {
     const d = new Date();
@@ -1554,6 +2163,155 @@ export default function App() {
     };
   }, [submitted, alarmStr, flightDate]);
 
+  // 当前经纬度天气（Open-Meteo，无 key）：用于闹钟区微动效；不影响现有元素逻辑
+  useEffect(() => {
+    const getMockKind = (): WeatherKind | null => {
+      try {
+        const fromLs = localStorage.getItem('chrono_weather_mock');
+        if (isWeatherKind(fromLs)) return fromLs;
+      } catch {
+        // ignore
+      }
+      try {
+        const q = new URLSearchParams(window.location.search).get('weatherMock');
+        if (isWeatherKind(q)) return q;
+      } catch {
+        // ignore
+      }
+      return null;
+    };
+
+    const applyMock = (kind: WeatherKind) => {
+      setWeatherFx({
+        kind,
+        label: weatherLabel(kind, true),
+        location: WEATHER_MOCK_CITY[kind],
+        tempC:
+          kind === 'snow' ? -2 :
+          kind === 'rain' ? 18 :
+          kind === 'thunder' ? 24 :
+          kind === 'sunny' ? 29 :
+          kind === 'cloudy' ? 21 :
+          kind === 'fog' ? 11 : 20,
+        isDay: true,
+      });
+    };
+
+    const mockKind = getMockKind();
+    if (mockKind) {
+      applyMock(mockKind);
+      return;
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const fetchByCoords = async (lat: number, lon: number) => {
+      try {
+        const url =
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+          `&current=temperature_2m,weather_code,is_day&timezone=auto`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const json = await res.json() as {
+          current?: { temperature_2m?: number; weather_code?: number; is_day?: number };
+        };
+        const cur = json.current;
+        if (!cur || typeof cur.weather_code !== 'number') return;
+        const kind = mapOpenMeteoCodeToWeather(cur.weather_code);
+        let location = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+        try {
+          const geoRes = await fetch(
+            `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=en&format=json`,
+          );
+          if (geoRes.ok) {
+            const geo = await geoRes.json() as {
+              results?: Array<{ name?: string; admin1?: string; country?: string }>;
+            };
+            const g = geo.results?.[0];
+            if (g) {
+              const parts = [g.name, g.admin1, g.country].filter(Boolean);
+              if (parts.length) location = parts.join(', ');
+            }
+          }
+        } catch {
+          // keep lat/lon fallback
+        }
+        const next: WeatherFx = {
+          kind,
+          label: weatherLabel(kind, cur.is_day === 1),
+          location,
+          tempC: typeof cur.temperature_2m === 'number' ? Math.round(cur.temperature_2m) : undefined,
+          isDay: cur.is_day === 1,
+        };
+        if (cancelled) return;
+        setWeatherFx(next);
+      } catch {
+        // ignore weather fetch failure
+      }
+    };
+
+    const request = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          void fetchByCoords(pos.coords.latitude, pos.coords.longitude);
+        },
+        () => {
+          // geolocation denied: keep silent and no overlay
+        },
+        { enableHighAccuracy: false, timeout: 7000, maximumAge: 10 * 60 * 1000 },
+      );
+    };
+
+    request();
+    timer = window.setInterval(request, 20 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+    };
+  }, []);
+
+  // 调试入口：在控制台快速切换 mock 天气
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    (window as unknown as {
+      __setWeatherMock?: (kind?: WeatherKind | 'off') => void;
+    }).__setWeatherMock = (kind?: WeatherKind | 'off') => {
+      if (!kind || kind === 'off') {
+        localStorage.removeItem('chrono_weather_mock');
+      } else {
+        localStorage.setItem('chrono_weather_mock', kind);
+      }
+      window.location.reload();
+    };
+  }, []);
+
+  const cycleWeatherMock = useCallback(() => {
+    const i = WEATHER_MOCK_CYCLE.indexOf(weatherMockKind);
+    const next = WEATHER_MOCK_CYCLE[(i + 1) % WEATHER_MOCK_CYCLE.length];
+    if (next === 'off') {
+      localStorage.removeItem('chrono_weather_mock');
+    } else {
+      localStorage.setItem('chrono_weather_mock', next);
+    }
+    setWeatherMockKind(next);
+    window.location.reload();
+  }, [weatherMockKind]);
+
+  useEffect(() => {
+    if (!weatherFx) return;
+    const key = `${weatherFx.kind}_${weatherFx.isDay ? 'd' : 'n'}`;
+    if (weatherCueKeyRef.current === key) return;
+    weatherCueKeyRef.current = key;
+    // 仅在已有一次用户交互后才大概率可发声；失败则静默
+    try {
+      playWeatherCue(weatherFx.kind);
+    } catch {
+      // ignore autoplay restrictions
+    }
+  }, [weatherFx]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -1744,6 +2502,7 @@ export default function App() {
     if (!target) return;
     // 仅当点击“不属于任何半透明模块”时切换皮肤
     if (target.closest('[data-skin-card="1"]')) return;
+    if (target.closest('[data-weather-float="1"]')) return;
     setSkin(prev => (prev === 'theme-pink' ? 'theme-green' : 'theme-pink'));
   };
 
@@ -2083,7 +2842,17 @@ export default function App() {
             ...liquidGlassPrimaryCard(16),
           }}>
             <div style={{ flex:1, minWidth:0, display:'flex', alignItems:'stretch', gap:12 }}>
-              <div style={{ display:'flex', flexDirection:'column', gap:2, position:'relative' }} ref={dateColumnRef}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  position: 'relative',
+                  flex: '0 1 auto',
+                  minWidth: 0,
+                }}
+                ref={dateColumnRef}
+              >
                 <div style={{ fontSize:8, color:C.moss, letterSpacing:'0.2em', textTransform:'uppercase' }}>Date</div>
                 <button
                   ref={datePickerTriggerRef}
@@ -2198,7 +2967,17 @@ export default function App() {
                 })()}
               </div>
               <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', gap:2 }}>
-                <div style={{ fontSize:8, color:C.moss, letterSpacing:'0.2em', textTransform:'uppercase' }}>Flight No.</div>
+                <div
+                  style={{
+                    fontSize: 8,
+                    color: C.moss,
+                    letterSpacing: '0.14em',
+                    textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Flight No.
+                </div>
                 <div style={{
                   background:'rgba(228,213,183,0.06)', border:'1px solid rgba(228,213,183,0.15)',
                   borderRadius:8, padding:'4px 8px', height:28, boxSizing:'border-box',
@@ -2640,6 +3419,31 @@ export default function App() {
 
           {/* Settings button 已移至 The Journey 标题行右侧，这里留空以腾出更大可视区域 */}
         </div>
+
+        <button
+          type="button"
+          aria-label="切换天气调试模式"
+          onClick={cycleWeatherMock}
+          style={{
+            position: 'fixed',
+            left: 10,
+            bottom: 'max(10px, env(safe-area-inset-bottom, 0px) + 6px)',
+            zIndex: 18,
+            border: '1px solid rgba(228,213,183,0.2)',
+            background: 'rgba(12,36,34,0.55)',
+            color: 'rgba(228,213,183,0.78)',
+            borderRadius: 8,
+            fontSize: 9,
+            letterSpacing: '0.06em',
+            padding: '4px 7px',
+            cursor: 'pointer',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+          }}
+          title={`Weather preview: ${weatherMockKind}`}
+        >
+          WX {weatherMockKind === 'off' ? 'auto' : weatherMockKind}
+        </button>
 
         {/* ── Settings Drawer ── */}
         <AnimatePresence>
@@ -3098,6 +3902,12 @@ export default function App() {
             </>
           )}
         </AnimatePresence>
+        {weatherFx?.location
+          ? createPortal(
+              <FloatingWeatherWidget fx={{ ...weatherFx, location: weatherFx.location }} />,
+              document.body,
+            )
+          : null}
       </div>
     </div>
   );
