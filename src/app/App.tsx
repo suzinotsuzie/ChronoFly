@@ -211,7 +211,7 @@ function playGoSound(): void {
   rumble.frequency.setValueAtTime(48, t);
   rumble.frequency.exponentialRampToValueAtTime(36, t + 0.22);
   rumbleGain.gain.setValueAtTime(0, t);
-  rumbleGain.gain.linearRampToValueAtTime(0.04, t + 0.02);
+  rumbleGain.gain.linearRampToValueAtTime(0.07, t + 0.02);
   rumbleGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
   rumble.start(t);
   rumble.stop(t + 0.25);
@@ -232,7 +232,7 @@ function playGoSound(): void {
   windFilter.connect(windGain);
   windGain.connect(ctx.destination);
   windGain.gain.setValueAtTime(0, t);
-  windGain.gain.linearRampToValueAtTime(0.022, t + 0.18);
+  windGain.gain.linearRampToValueAtTime(0.04, t + 0.18);
   windGain.gain.exponentialRampToValueAtTime(0.001, t + windDur);
   windSource.start(t);
   windSource.stop(t + windDur);
@@ -251,7 +251,7 @@ function playNowSound(): void {
     o.type = 'sine';
     o.frequency.setValueAtTime(freq, t + start);
     g.gain.setValueAtTime(0, t + start);
-    g.gain.linearRampToValueAtTime(0.022, t + start + 0.008);
+    g.gain.linearRampToValueAtTime(0.04, t + start + 0.008);
     g.gain.exponentialRampToValueAtTime(0.001, t + start + 0.1);
     o.start(t + start);
     o.stop(t + start + 0.1);
@@ -1275,13 +1275,15 @@ export default function App() {
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [profileEditName, setProfileEditName] = useState('');
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  /** 早起/非早起开关：记录触点用于滑动切换 */
-  const riseModeSwitchPtr = useRef<{ startX: number } | null>(null);
+  /** 早起/非早起开关：记录触点用于滑动切换（移动端需跟手） */
+  const riseModeSwitchPtr = useRef<{ startX: number; pointerId: number } | null>(null);
+  const [riseModeDragDx, setRiseModeDragDx] = useState(0);
   /** 避免同一套打卡重复写入历史 */
   const journeyHistorySigRef = useRef<string>('');
   const [flightDepStr, setFlightDepStr] = useState<string | null>(null);
   const [flightApiSnapshot, setFlightApiSnapshot] = useState<FlightApiSnapshot | null>(null);
   const [flightLoading, setFlightLoading] = useState(false);
+  const [flightApiHint, setFlightApiHint] = useState('');
   const [alarmSyncHint, setAlarmSyncHint] = useState('');
   const [flightDate, setFlightDate] = useState(() => {
     const d = new Date();
@@ -1501,24 +1503,31 @@ export default function App() {
   };
 
   const isPink = skin === 'theme-pink';
+  // 粉色主题默认隐藏 Snooze time（linger）：计算与展示都应视为「已跳过」。
+  const effectiveSkippedSet = useMemo(() => {
+    const s = new Set(skippedSet);
+    if (isPink) s.add('linger');
+    return s;
+  }, [isPink, skippedSet]);
   const notInJourneyGlass = useMemo(
     () => liquidGlassPrimaryCard(20, { light: true, drawerNested: true }),
     [],
   );
 
-  const depStr   = submitted ? (flightDepStr ?? mockDeparture(submitted)) : null;
-  const times    = depStr   ? calcTimes(depStr, durations, skippedSet) : null;
+  const depStr   = submitted
+    ? (flightDepStr ?? (flightApiHint ? mockDeparture(submitted) : null))
+    : null;
+  const times    = depStr   ? calcTimes(depStr, durations, effectiveSkippedSet) : null;
   const alarmStr = times    ? toStr(times.wake) : null;
 
   const journeyNodes = useMemo(
     () =>
       NODES.filter((n) => {
         if (n.id === 'wake') return true;
-        if (isPink && n.id === 'linger') return false;
-        if (skippedSet.has(n.id as DurKey)) return false;
+        if (effectiveSkippedSet.has(n.id as DurKey)) return false;
         return true;
       }),
-    [isPink, skippedSet],
+    [effectiveSkippedSet],
   );
   const journeyNodeIds = useMemo(() => journeyNodes.map((n) => n.id), [journeyNodes]);
 
@@ -1608,6 +1617,24 @@ export default function App() {
     });
   }, [flightOrigin, flightDest, submitted, flightDate]);
 
+  const fetchFlightLookupWithRetry = async (val: string, dateYmd: string): Promise<unknown> => {
+    let lastErr: unknown = null;
+    for (let i = 0; i < 2; i++) {
+      try {
+        const r = await fetch(`/api/flight?flightNo=${encodeURIComponent(val)}&flight_date=${encodeURIComponent(dateYmd)}`);
+        if (!r.ok) throw new Error(`http_${r.status}`);
+        const json = await r.json();
+        return json;
+      } catch (err) {
+        lastErr = err;
+        if (i === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+    }
+    throw lastErr ?? new Error('flight_lookup_failed');
+  };
+
   const submit = () => {
     const val = flightNo.trim().toUpperCase();
     if (!val) return;
@@ -1622,11 +1649,10 @@ export default function App() {
     setFlightOrigin('');
     setFlightDest('');
     setFlightApiSnapshot(null);
-    const mock = mockDeparture(val);
-    setFlightDepStr(mock);
+    setFlightApiHint('');
+    setFlightDepStr(null);
     setFlightLoading(true);
-    fetch(`/api/flight?flightNo=${encodeURIComponent(val)}&flight_date=${encodeURIComponent(flightDate)}`)
-      .then((r) => r.json())
+    fetchFlightLookupWithRetry(val, flightDate)
       .then((json: unknown) => {
         const { snap, airportsOnly } = parseFlightLookupEnvelope(json, flightDate);
         if (snap) {
@@ -1634,19 +1660,24 @@ export default function App() {
           setFlightOrigin(snap.origin);
           setFlightDest(snap.dest);
           setFlightApiSnapshot(snap);
+          setFlightApiHint('');
           if (/^\d{4}-\d{2}-\d{2}$/.test(snap.depDateYmd)) {
             setFlightDate(snap.depDateYmd);
             setDatePickerMonth(parseFlightDate(snap.depDateYmd));
           }
         } else {
           setFlightApiSnapshot(null);
+          setFlightApiHint('live API returned no schedule, using mock departure');
           if (airportsOnly) {
             setFlightOrigin(airportsOnly.origin);
             setFlightDest(airportsOnly.dest);
           }
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        setFlightApiSnapshot(null);
+        setFlightApiHint('live API failed (retried once), using mock departure');
+      })
       .finally(() => setFlightLoading(false));
   };
 
@@ -1674,13 +1705,16 @@ export default function App() {
   const getProgressData = (nodeId: string) => {
     if (!times || !stamps[nodeId]) return null;
     const wakeMin  = times.wake;
-    const boardMin = times.board;
-    const span = boardMin - wakeMin;
+    // 进度条分母使用「The Journey 最后一个可见 checkpoint」而非起飞时刻。
+    const lastVisibleId = getLastVisibleJourneyId(skippedSet, isPink);
+    const journeyEndMin = times[lastVisibleId];
+    if (journeyEndMin === undefined) return null;
+    const span = journeyEndMin - wakeMin;
     if (span <= 0) return null;
     const expectedMin = times[nodeId];
     if (expectedMin === undefined) return null;
     const rawActual = toMin(stamps[nodeId]);
-    const actualMin = alignActualToJourneyWindow(rawActual, wakeMin, boardMin);
+    const actualMin = alignActualToJourneyWindow(rawActual, wakeMin, journeyEndMin);
     const ePct = Math.max(0, Math.min(100, (expectedMin - wakeMin) / span * 100));
     const aPct = Math.max(0, Math.min(100, (actualMin   - wakeMin) / span * 100));
     return { ePct, aPct, isEarly: aPct <= ePct };
@@ -1920,9 +1954,15 @@ export default function App() {
                 }}
                 onPointerDown={(e) => {
                   e.stopPropagation();
-                  e.preventDefault();
-                  riseModeSwitchPtr.current = { startX: e.clientX };
+                  riseModeSwitchPtr.current = { startX: e.clientX, pointerId: e.pointerId };
+                  setRiseModeDragDx(0);
                   (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={(e) => {
+                  const start = riseModeSwitchPtr.current;
+                  if (!start || start.pointerId !== e.pointerId) return;
+                  const dx = e.clientX - start.startX;
+                  setRiseModeDragDx(Math.max(-24, Math.min(24, dx)));
                 }}
                 onPointerUp={(e) => {
                   e.stopPropagation();
@@ -1933,8 +1973,10 @@ export default function App() {
                   } catch {
                     /* released */
                   }
+                  const dragDx = riseModeDragDx;
+                  setRiseModeDragDx(0);
                   if (!start) return;
-                  const dx = e.clientX - start.x;
+                  const dx = Math.abs(dragDx) > 0 ? dragDx : (e.clientX - start.startX);
                   if (Math.abs(dx) > 14) {
                     setSkin(dx > 0 ? 'theme-pink' : 'theme-green');
                   } else {
@@ -1943,6 +1985,7 @@ export default function App() {
                 }}
                 onPointerCancel={() => {
                   riseModeSwitchPtr.current = null;
+                  setRiseModeDragDx(0);
                 }}
                 style={{
                   position: 'relative',
@@ -1962,7 +2005,7 @@ export default function App() {
               >
                 <motion.div
                   transition={{ type: 'spring', stiffness: 480, damping: 34 }}
-                  animate={{ x: isPink ? 24 : 2 }}
+                  animate={{ x: (isPink ? 24 : 2) + riseModeDragDx * 0.35 }}
                   style={{
                     position: 'absolute',
                     top: 2,
@@ -2209,17 +2252,12 @@ export default function App() {
             <AlarmHeroDecor />
 
             <AnimatePresence mode="wait">
-              {alarmStr ? (
-                /* ── Active: flight entered ── */
-                <motion.div
-                  key="active"
-                  initial={{ opacity:0, scale:0.9, filter:'blur(8px)' }}
-                  animate={{ opacity:1, scale:1,   filter:'blur(0px)' }}
-                  exit={{    opacity:0, scale:1.05, filter:'blur(4px)' }}
-                  transition={{ duration:0.55, ease:[0.22,1,0.36,1] }}
+              {submitted ? (
+                <div
+                  key="submitted-state"
                   style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}
                 >
-                  {/* label: set alarm text */}
+                  {/* label: 保持静态，不参与呼吸/切换动画 */}
                   <div style={{
                     fontSize:10,
                     color:C.moss,
@@ -2235,16 +2273,51 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* big time */}
-                  <div style={{
-                    fontFamily:'"Cormorant Garamond", Georgia, serif',
-                    fontSize:56, color:C.beige, lineHeight:1,
-                    letterSpacing:'-0.01em',
-                    marginTop:0,
-                    marginBottom:8,
-                  }}>{alarmStr}</div>
+                  {/* 中间态：用空态闹钟 icon 呼吸；就绪后切回时间呼吸 */}
+                  {alarmStr ? (
+                    <motion.div
+                      key="time-ready"
+                      initial={{ opacity: 0.35 }}
+                      animate={{ opacity: [0.9, 1, 0.9] }}
+                      transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                      style={{
+                        fontFamily:'"Cormorant Garamond", Georgia, serif',
+                        fontSize:56, color:C.beige, lineHeight:1,
+                        letterSpacing:'-0.01em',
+                        marginTop:0,
+                        marginBottom:8,
+                        minHeight: 56,
+                      }}
+                    >
+                      {alarmStr}
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="time-loading-icon"
+                      initial={{ opacity: 0.28, scale: 0.98 }}
+                      animate={{ opacity: [0.28, 0.62, 0.28], scale: [0.98, 1.02, 0.98] }}
+                      transition={{ duration: 1.35, repeat: Infinity, ease: 'easeInOut' }}
+                      style={{ marginBottom: 8, minHeight: 56, display: 'flex', alignItems: 'center' }}
+                    >
+                      <svg width="40" height="40" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                          <radialGradient id="bell_mid_loading" cx="36%" cy="28%" r="68%">
+                            <stop offset="0%" stopColor="#E4D5B7" />
+                            <stop offset="50%" stopColor="var(--c-roseLight)" />
+                            <stop offset="100%" stopColor="#A89070" />
+                          </radialGradient>
+                        </defs>
+                        <path d="M36 12 C24 12 18 22 18 32 L18 46 Q18 50 22 50 L50 50 Q54 50 54 46 L54 32 C54 22 48 12 36 12Z" fill="url(#bell_mid_loading)"/>
+                        <circle cx="36" cy="54" r="4.5" fill="var(--c-rosy)"/>
+                        <path d="M30 12 Q36 6 42 12" stroke="#A89070" strokeWidth="3" strokeLinecap="round" fill="none" opacity="0.8"/>
+                        <circle cx="36" cy="10" r="2.8" fill="var(--c-roseLight)" opacity="0.75"/>
+                        <path d="M10 28 Q6 36 10 44"  stroke="var(--c-rosy)" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
+                        <path d="M62 28 Q66 36 62 44" stroke="var(--c-rosy)" strokeWidth="2.8" strokeLinecap="round" fill="none" opacity="0.75"/>
+                      </svg>
+                    </motion.div>
+                  )}
 
-                  {/* flight badge */}
+                  {/* flight badge: 保留 loading 中间态 */}
                   <div style={{
                     display:'inline-flex', alignItems:'center', gap:6,
                     marginTop:2,
@@ -2257,10 +2330,23 @@ export default function App() {
                     </span>
                     <span style={{ width:3, height:3, borderRadius:'50%', background:'color-mix(in srgb, var(--c-rosy) 45%, transparent)', display:'inline-block' }}/>
                     <span style={{ fontSize:9, color:'color-mix(in srgb, var(--c-rosy) 70%, transparent)', letterSpacing:'0.06em' }}>
-                      departs {depStr}{flightLoading ? ' …' : ''}
+                      departs {depStr ?? '...'}{flightLoading ? ' …' : ''}
                     </span>
                   </div>
-                </motion.div>
+                  {flightApiHint && (
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 9,
+                        color: 'color-mix(in srgb, var(--c-beige) 72%, transparent)',
+                        letterSpacing: '0.05em',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {flightApiHint}
+                    </div>
+                  )}
+                </div>
               ) : (
                 /* ── Empty: no flight yet ── */
                 <motion.div
